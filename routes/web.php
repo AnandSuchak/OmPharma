@@ -28,3 +28,11 @@ Route::get('/medicines/{medicineId}/batches', [SaleController::class, 'getBatche
 Route::get('/sales/medicines/{medicineId}/batches/{batchNumber}/expiry/{expiryDate}/quantity', [SaleController::class, 'getAvailableQuantity']);
 Route::get('/sales/{sale}/bill', [SaleController::class, 'generateBill'])->name('sales.bill');
 Route::get('/api/medicines/{medicine}/gst', [MedicineController::class, 'getGstRate'])->name('api.medicines.gst');
+Route::get('/sales/{sale}/print', [SaleController::class, 'print'])->name('sales.print');
+Route::get('/sales/{id}/print', [SaleController::class, 'print'])->name('sales.print');
+// For AJAX search of medicines
+Route::get('/api/medicines/search', [MedicineController::class, 'search'])->name('api.medicines.search');
+Route::get('/api/batches/info', [SaleController::class, 'getBatchDetailsFromPurchase']);
+
+Route::get('/medicines/search', [MedicineController::class, 'search']);
+Route::get('/sales/medicines/{medicineId}/batches/{batch}/expiry/{expiry}/quantity', [SaleController::class, 'getAvailableQuantity']);

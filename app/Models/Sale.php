@@ -42,4 +42,10 @@ class Sale extends Model
     {
         return $this->belongsTo(Customer::class);
     }
+
+    public function getSubtotalAmountAttribute(): float
+{
+    return round($this->total_amount - $this->total_gst_amount, 2);
+}
+
 }

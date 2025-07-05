@@ -63,6 +63,10 @@
                     @endforelse
                 </tbody>
             </table>
+            <div class="mt-3 px-2">
+                {{ $purchaseBills->links() }}
+            </div>
+
         </div>
     </div>
 </div>

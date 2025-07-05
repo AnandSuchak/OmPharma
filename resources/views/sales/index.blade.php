@@ -59,6 +59,11 @@
                                         <i class="fa fa-trash-alt"></i>
                                     </button>
                                 </form>
+                                <a href="{{ route('sales.print', $sale->id) }}" class="btn btn-outline-dark" target="_blank">
+    <i class="fa fa-print me-1"></i> Print Bill
+</a>
+
+
                             </td>
                         </tr>
                     @empty

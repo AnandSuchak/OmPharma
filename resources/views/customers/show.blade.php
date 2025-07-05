@@ -17,29 +17,58 @@
     </div>
 
     <div class="card shadow-sm">
+        <div class="card-header bg-light text-dark fw-semibold">
+            <i class="fa fa-address-card me-2"></i> Basic Information
+        </div>
         <div class="card-body">
-            <h4 class="text-primary fw-semibold mb-4">
-                <i class="fa fa-user me-2"></i> {{ $customer->name }}
-            </h4>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label class="form-label text-muted">Full Name</label>
+                    <div class="fw-bold">{{ $customer->name }}</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label text-muted">Contact Number</label>
+                    <div>{{ $customer->contact_number ?? '-' }}</div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label class="form-label text-muted">Email</label>
+                    <div>{{ $customer->email ?? '-' }}</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label text-muted">Address</label>
+                    <div>{{ $customer->address ?? '-' }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-            <div class="row gy-3">
-                <div class="col-md-6 col-lg-4">
-                    <div><strong>📞 Contact Number:</strong> {{ $customer->contact_number ?? '-' }}</div>
+    <div class="card shadow-sm mt-4">
+        <div class="card-header bg-light text-dark fw-semibold">
+            <i class="fa fa-file-invoice me-2"></i> Tax & License Details
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label class="form-label text-muted">Drug License Number (DLN)</label>
+                    <div>{{ $customer->dln ?? '-' }}</div>
                 </div>
-                <div class="col-md-6 col-lg-4">
-                    <div><strong>✉️ Email:</strong> {{ $customer->email ?? '-' }}</div>
-                </div>
-                <div class="col-md-12 col-lg-8">
+                <div class="col-md-6">
+                    <label class="form-label text-muted">GST Number</label>
                     <div>
-                        <strong>📍 Address:</strong>
-                        <div class="text-muted">{{ $customer->address ?? 'N/A' }}</div>
+                        @if ($customer->gst_number)
+                            <span class="badge bg-success">{{ $customer->gst_number }}</span>
+                        @else
+                            <span class="text-muted">N/A</span>
+                        @endif
                     </div>
                 </div>
-                <div class="col-md-6 col-lg-4">
-                    <div><strong>🧾 GST Number:</strong> {{ $customer->gst_number ?? '-' }}</div>
-                </div>
-                <div class="col-md-6 col-lg-4">
-                    <div><strong>🏬 Firm Name:</strong> {{ $customer->firm_name ?? '-' }}</div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label text-muted">PAN Number</label>
+                    <div>{{ $customer->pan_number ?? '-' }}</div>
                 </div>
             </div>
         </div>

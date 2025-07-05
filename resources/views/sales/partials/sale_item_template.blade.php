@@ -3,8 +3,8 @@
         <div class="card-body">
             <div class="row mb-2">
                 <div class="col-md-6">
-                    <label for="medicine_id" class="form-label">Medicine:</label>
-                    <select class="form-select medicine-select select2-medicine" name="sale_items[__INDEX__][medicine_id]" required data-placeholder="Select Medicine">
+                    <label class="form-label">Medicine:</label>
+                    <select class="form-select medicine-select select2-medicine" name="sale_items[__INDEX__][medicine_id]" required>
                         <option></option>
                         @foreach ($medicines as $medicine)
                             <option value="{{ $medicine->id }}">
@@ -18,7 +18,7 @@
                     <label class="form-label">Batch Number:</label>
                     <select class="form-select batch-select select2-batch" name="sale_items[__INDEX__][batch_number]" required>
                         <option></option>
-                        <!-- JS will populate -->
+                        <!-- Populated via JS -->
                     </select>
                 </div>
 

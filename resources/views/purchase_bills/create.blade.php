@@ -13,7 +13,7 @@
 
     @if ($errors->any())
         <div class="alert alert-danger">
-            <strong>Whoops!</strong> There were some problems with your input.<br><br>
+            <strong>Whoops!</strong> Please fix the following issues:
             <ul>
                 @foreach ($errors->all() as $error)
                     <li>{{ $error }}</li>
@@ -25,11 +25,9 @@
     <form action="{{ route('purchase_bills.store') }}" method="POST">
         @csrf
 
-        {{-- Bill Details Section --}}
+        {{-- Bill Details --}}
         <div class="card shadow-sm mb-4">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Bill Details</h5>
-            </div>
+            <div class="card-header"><h5 class="mb-0">Bill Details</h5></div>
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-4 mb-3">
@@ -49,27 +47,15 @@
                         <label for="bill_date" class="form-label">Bill Date:</label>
                         <input type="date" class="form-control" id="bill_date" name="bill_date" value="{{ now()->toDateString() }}" required>
                     </div>
-                    <div class="col-md-4 mb-3">
-                        <label for="status" class="form-label">Status:</label>
-                        <select class="form-select" id="status" name="status">
-                            <option value="Received">Received</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Cancelled">Cancelled</option>
-                        </select>
-                    </div>
-                    <div class="col-md-8 mb-3">
-                        <label for="notes" class="form-label">Notes:</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="1"></textarea>
-                    </div>
                 </div>
             </div>
         </div>
 
-        {{-- Bill Items Section --}}
+        {{-- Items --}}
         <h5 class="mb-3">Purchase Bill Items</h5>
         <div id="purchase_items_container"></div>
 
-        {{-- Totals Section --}}
+        {{-- Totals --}}
         <div class="row mt-4">
             <div class="col-md-6">
                 <button type="button" id="add_new_item" class="btn btn-success">
@@ -81,7 +67,7 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-2">
                             <h5 class="card-title mb-0">Totals</h5>
-                            <button type="button" id="toggle_manual_edit" class="btn btn-sm btn-outline-warning" title="Allow manual editing of totals">
+                            <button type="button" id="toggle_manual_edit" class="btn btn-sm btn-outline-warning">
                                 <i class="fa fa-pencil-alt"></i> Manual Edit
                             </button>
                         </div>
@@ -121,12 +107,7 @@
             <div class="row mb-2">
                 <div class="col-md-5">
                     <label class="form-label">Medicine:</label>
-                    <select class="form-select medicine-select" name="purchase_items[__INDEX__][medicine_id]" required>
-                        <option value="">Select Medicine</option>
-                        @foreach ($medicines as $medicine)
-                            <option value="{{ $medicine->id }}" data-gst="{{ $medicine->gst_rate }}">{{ $medicine->name }} ({{ $medicine->company_name ?? 'Generic' }})</option>
-                        @endforeach
-                    </select>
+                    <select class="form-select medicine-select" name="purchase_items[__INDEX__][medicine_id]" required></select>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Batch Number:</label>
@@ -160,7 +141,7 @@
                 </div>
                 <div class="col">
                     <label class="form-label">GST Rate (%):</label>
-                    <input type="number" class="form-control item-calc gst-rate" name="purchase_items[__INDEX__][gst_rate]" step="0.01" min="0">
+                    <input type="number" class="form-control item-calc gst-rate" name="purchase_items[__INDEX__][gst_rate]" step="0.01" min="0" readonly>
                 </div>
             </div>
             <div class="text-end">
@@ -172,109 +153,173 @@
     </div>
 </template>
 @endsection
-
 @push('scripts')
-<!-- Select2 -->
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const itemsContainer = document.getElementById('purchase_items_container');
-    const addItemButton = document.getElementById('add_new_item');
-    const itemTemplate = document.getElementById('purchase_item_template').content;
-    const subtotalInput = document.getElementById('subtotal_amount');
-    const totalGstInput = document.getElementById('total_gst_amount');
-    const totalAmountInput = document.getElementById('total_amount');
-    const manualEditButton = document.getElementById('toggle_manual_edit');
-
+    const container = document.getElementById('purchase_items_container');
+    const addItemBtn = document.getElementById('add_new_item');
+    const template = document.getElementById('purchase_item_template').content;
     let itemCount = 0;
     let isManualMode = false;
 
-    const calculateTotals = () => {
+    const subtotalInput = document.getElementById('subtotal_amount');
+    const gstInput = document.getElementById('total_gst_amount');
+    const totalInput = document.getElementById('total_amount');
+
+    function calculateTotals() {
         if (isManualMode) return;
         let subtotal = 0, totalGst = 0;
 
         document.querySelectorAll('.purchase-item').forEach(item => {
-            const quantity = parseFloat(item.querySelector('[name*="[quantity]"]').value) || 0;
+            const qty = parseFloat(item.querySelector('[name*="[quantity]"]').value) || 0;
             const price = parseFloat(item.querySelector('[name*="[purchase_price]"]').value) || 0;
-            const discount = parseFloat(item.querySelector('[name*="[discount_percentage]"]').value) || 0;
+            const disc = parseFloat(item.querySelector('[name*="[discount_percentage]"]').value) || 0;
             const gstRate = parseFloat(item.querySelector('[name*="[gst_rate]"]').value) || 0;
 
-            const basePrice = quantity * price;
-            const discountAmount = basePrice * (discount / 100);
-            const priceAfterDiscount = basePrice - discountAmount;
-            const gstAmount = priceAfterDiscount * (gstRate / 100);
+            const base = qty * price;
+            const afterDisc = base - (base * disc / 100);
+            const gst = afterDisc * (gstRate / 100);
 
-            subtotal += priceAfterDiscount;
-            totalGst += gstAmount;
+            subtotal += afterDisc;
+            totalGst += gst;
         });
 
-        const grandTotal = subtotal + totalGst;
         subtotalInput.value = subtotal.toFixed(2);
-        totalGstInput.value = totalGst.toFixed(2);
-        totalAmountInput.value = grandTotal.toFixed(2);
-    };
+        gstInput.value = totalGst.toFixed(2);
+        totalInput.value = (subtotal + totalGst).toFixed(2);
+    }
 
-    const attachListeners = (context) => {
-        context.querySelector('.remove-item').addEventListener('click', () => {
-            context.remove();
+    function attachListeners(wrapper) {
+        wrapper.querySelector('.remove-item').addEventListener('click', () => {
+            wrapper.remove();
             calculateTotals();
         });
 
-        const medicineSelect = context.querySelector('.medicine-select');
-        const gstInput = context.querySelector('.gst-rate');
+        const select = wrapper.querySelector('.medicine-select');
+        const gstRateField = wrapper.querySelector('.gst-rate');
 
-        $(medicineSelect).select2({ theme: 'bootstrap-5', placeholder: 'Select Medicine' });
-        medicineSelect.addEventListener('change', function () {
-            const selectedOption = this.options[this.selectedIndex];
-            const gstRate = selectedOption.getAttribute('data-gst') || '0.00';
-            gstInput.value = gstRate;
-            calculateTotals();
+        // Initialize Select2
+        $(select).select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Search medicine',
+            ajax: {
+                url: '{{ url("/api/medicines/search") }}',
+                dataType: 'json',
+                delay: 250,
+                data: params => ({ q: params.term }),
+                processResults: data => ({
+                    results: data.map(med => ({
+                        id: med.id,
+                        text: `${med.name} (${med.company_name ?? 'Generic'})`
+                    }))
+                }),
+                cache: true
+            }
         });
 
-        context.querySelectorAll('.item-calc').forEach(input => {
-            input.addEventListener('input', calculateTotals);
-        });
-    };
+        // Attach correct Select2 event
+        $(select).on('select2:select', function (e) {
+            const medicineId = e.params.data.id;
+            console.log("➡️ Medicine selected:", medicineId);
 
-    const addNewItem = () => {
-        const newItem = itemTemplate.cloneNode(true);
-        const wrapper = newItem.querySelector('.purchase-item');
+            if (medicineId) {
+                fetch(`/api/medicines/${medicineId}/gst`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log("✅ GST data:", data);
+                        gstRateField.value = data.gst_rate;
+                        calculateTotals();
+                    })
+                    .catch(error => {
+                        console.error("❌ Error fetching GST:", error);
+                        gstRateField.value = 0;
+                    });
+            }
+        });
+
+        // Auto-calculate when input fields are edited
+        wrapper.querySelectorAll('.item-calc').forEach(el => {
+            el.addEventListener('input', calculateTotals);
+        });
+    }
+
+    function addItem() {
+        const clone = template.cloneNode(true);
+        const wrapper = clone.querySelector('.purchase-item');
 
         wrapper.querySelectorAll('select, input').forEach(el => {
-            const name = el.getAttribute('name');
-            if (name) el.setAttribute('name', name.replace('__INDEX__', itemCount));
+            const name = el.name;
+            if (name) el.name = name.replace('__INDEX__', itemCount);
         });
 
-        itemsContainer.appendChild(wrapper);
+        container.appendChild(wrapper);
         attachListeners(wrapper);
         itemCount++;
-        calculateTotals();
-    };
+    }
 
-    addItemButton.addEventListener('click', addNewItem);
-
-    manualEditButton.addEventListener('click', function () {
+    // Add initial item
+    addItemBtn.addEventListener('click', addItem);
+    document.getElementById('toggle_manual_edit').addEventListener('click', function () {
         isManualMode = !isManualMode;
-        const fields = [subtotalInput, totalGstInput, totalAmountInput];
-
-        if (isManualMode) {
-            this.innerHTML = '<i class="fa fa-lock"></i> Lock Totals';
-            this.classList.remove('btn-outline-warning');
-            this.classList.add('btn-warning');
-            fields.forEach(f => f.readOnly = false);
-        } else {
-            this.innerHTML = '<i class="fa fa-pencil-alt"></i> Manual Edit';
-            this.classList.remove('btn-warning');
-            this.classList.add('btn-outline-warning');
-            fields.forEach(f => f.readOnly = true);
-            calculateTotals();
-        }
+        const fields = [subtotalInput, gstInput, totalInput];
+        fields.forEach(field => field.readOnly = !isManualMode);
+        this.innerHTML = isManualMode
+            ? '<i class="fa fa-lock"></i> Lock Totals'
+            : '<i class="fa fa-pencil-alt"></i> Manual Edit';
     });
 
-    $('#supplier_id').select2({ theme: 'bootstrap-5', placeholder: 'Select Supplier' });
-    addNewItem(); // Add one item on load
+    $('#supplier_id').select2({ theme: 'bootstrap-5' });
+
+    // Add default first item
+    addItem();
 });
+
+// Refill old inputs if validation fails
+const oldPurchaseItems = @json(old('purchase_items', []));
+if (oldPurchaseItems.length > 0) {
+    container.innerHTML = ''; // clear default item
+    itemCount = 0;
+    oldPurchaseItems.forEach(item => {
+        const clone = template.cloneNode(true);
+        const wrapper = clone.querySelector('.purchase-item');
+
+        wrapper.querySelectorAll('select, input').forEach(el => {
+            const name = el.name;
+            if (name) el.name = name.replace('__INDEX__', itemCount);
+        });
+
+        // Fill values
+        wrapper.querySelector('[name$="[batch_number]"]').value = item.batch_number ?? '';
+        wrapper.querySelector('[name$="[expiry_date]"]').value = item.expiry_date ?? '';
+        wrapper.querySelector('[name$="[quantity]"]').value = item.quantity ?? 1;
+        wrapper.querySelector('[name$="[purchase_price]"]').value = item.purchase_price ?? 0;
+        wrapper.querySelector('[name$="[ptr]"]').value = item.ptr ?? '';
+        wrapper.querySelector('[name$="[sale_price]"]').value = item.sale_price ?? '';
+        wrapper.querySelector('[name$="[discount_percentage]"]').value = item.discount_percentage ?? 0;
+        wrapper.querySelector('[name$="[gst_rate]"]').value = item.gst_rate ?? 0;
+
+        container.appendChild(wrapper);
+        attachListeners(wrapper);
+
+        // Initialize Select2 with preselected medicine (if possible)
+        const medSelect = wrapper.querySelector('.medicine-select');
+        if (item.medicine_id) {
+            const option = new Option(item.medicine_name ?? 'Selected Medicine', item.medicine_id, true, true);
+            medSelect.append(option);
+        }
+
+        itemCount++;
+    });
+}
+
+
 </script>
 @endpush

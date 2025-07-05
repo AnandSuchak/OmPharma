@@ -4,40 +4,56 @@
 
 @section('content')
 <div class="card-box">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
         <h3 class="mb-0">📦 Medicine Inventory</h3>
+        <input type="text" id="inventory-search" class="form-control w-25" placeholder="🔍 Search medicine...">
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-body p-0">
-            <table class="table table-hover table-bordered mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>💊 Medicine Name</th>
-                        <th>📦 Total Quantity</th>
-                        <th class="text-center">⚙️ Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse ($inventories as $inventory)
-                        <tr>
-                            <td>{{ $inventory->medicine->name }}</td>
-                            <td>{{ $inventory->total_quantity }}</td>
-                            <td class="text-center">
-                                <a href="{{ route('inventories.show', $inventory->medicine_id) }}"
-                                   class="btn btn-sm btn-outline-info" title="View Details">
-                                    <i class="fa fa-eye me-1"></i> View
-                                </a>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">No inventory records found.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+    <div id="inventory-list">
+        @include('inventories.partials.table', ['inventories' => $inventories])
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchBox = document.getElementById('inventory-search');
+    let timer = null;
+
+    function fetchInventory(url = "{{ route('inventories.index') }}") {
+        const searchQuery = searchBox.value;
+        fetch(`${url}?search=${encodeURIComponent(searchQuery)}`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.text())
+        .then(html => {
+            document.getElementById('inventory-list').innerHTML = html;
+            attachPaginationLinks();
+        })
+        .catch(error => {
+            console.error('AJAX fetch error:', error);
+        });
+    }
+
+    function attachPaginationLinks() {
+        document.querySelectorAll('.pagination a').forEach(link => {
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                const url = this.getAttribute('href');
+                if (url) fetchInventory(url);
+            });
+        });
+    }
+
+    searchBox.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(() => fetchInventory(), 400);
+    });
+
+    attachPaginationLinks();
+});
+</script>
+@endpush

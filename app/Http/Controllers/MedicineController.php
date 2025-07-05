@@ -102,37 +102,59 @@ public function destroy(Medicine $medicine): RedirectResponse
     return redirect()->route('medicines.index')->with('success', 'Medicine deleted successfully.');
 }
 
-    public function getBatches($medicineId)
+public function getBatches($medicineId)
 {
-    // Fetch batches from inventory (only where quantity > 0)
-    $inventoryBatches = Inventory::where('medicine_id', $medicineId)
-        ->where('quantity', '>', 0)
+    // Fetch distinct batch entries from purchase_bill_items for this medicine
+    $batches = PurchaseBillItem::where('medicine_id', $medicineId)
         ->orderBy('expiry_date', 'asc')
-        ->get(['batch_number', 'expiry_date', 'quantity']);
+        ->get([
+            'batch_number',
+            'expiry_date',
+            'quantity',
+            'ptr',
+            'gst_rate',
+            'sale_price',
+            'discount_percentage',
+        ])
+        ->groupBy(function ($item) {
+            // Use batch + expiry as key
+            return $item->batch_number . '_' . $item->expiry_date;
+        })
+        ->map(function ($group) {
+            // Use the latest purchase for this batch
+            $latest = $group->sortByDesc('id')->first();
 
-    // Attach pricing details from PurchaseBillItem
-    $result = $inventoryBatches->map(function ($inv) use ($medicineId) {
-        $pricing = PurchaseBillItem::where('medicine_id', $medicineId)
-            ->where('batch_number', $inv->batch_number)
-            ->whereDate('expiry_date', $inv->expiry_date)
-            ->latest('id') // In case multiple entries, take latest purchase
-            ->first(['ptr', 'gst_rate', 'sale_price']);
+            return [
+                'batch_number'        => $latest->batch_number,
+                'expiry_date'         => $latest->expiry_date,
+                'quantity'            => $latest->quantity,
+                'ptr'                 => $latest->ptr,
+                'gst_rate'            => $latest->gst_rate,
+                'sale_price'          => $latest->sale_price,
+                'discount_percentage' => $latest->discount_percentage,
+            ];
+        })
+        ->values(); // Reset keys to 0, 1, 2...
 
-        return [
-            'batch_number'   => $inv->batch_number,
-            'expiry_date'    => $inv->expiry_date,
-            'quantity'       => $inv->quantity,
-            'ptr'            => $pricing->ptr ?? null,
-            'gst_rate'       => $pricing->gst_rate ?? null,
-            'sale_price'  => $pricing->sale_price ?? null,
-        ];
-    });
-
-    return response()->json($result);
+    return response()->json($batches);
 }
+
     
     public function getGstRate(Medicine $medicine)
     {
         return response()->json(['gst_rate' => $medicine->gst_rate]);
     }
+public function search(Request $request)
+{
+    $query = $request->input('q');
+
+    $medicines = Medicine::where('name', 'like', "%{$query}%")
+        ->orWhere('company_name', 'like', "%{$query}%")
+        ->limit(20)
+        ->get(['id', 'name', 'company_name']);
+
+    return response()->json($medicines);
+}
+
+
 }

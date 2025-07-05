@@ -17,29 +17,55 @@
     </div>
 
     <div class="card shadow-sm">
-        <div class="card-body">
-            <h4 class="text-primary fw-semibold mb-4">
-                <i class="fa fa-user-tie me-2"></i> {{ $supplier->name }}
-            </h4>
+        <div class="card-body px-4 py-4">
+            <div class="mb-4">
+                <h4 class="text-primary fw-semibold">
+                    <i class="fa fa-user-tie me-2"></i> {{ $supplier->name }}
+                </h4>
+                <hr>
+            </div>
 
-            <div class="row gy-3">
+            <div class="row gy-4">
                 <div class="col-md-6 col-lg-4">
-                    <div><strong>📞 Contact Number:</strong> {{ $supplier->contact_number ?? '-' }}</div>
-                </div>
-                <div class="col-md-6 col-lg-4">
-                    <div><strong>✉️ Email:</strong> {{ $supplier->email ?? '-' }}</div>
-                </div>
-                <div class="col-md-12 col-lg-8">
-                    <div>
-                        <strong>📍 Address:</strong>
-                        <div class="text-muted">{{ $supplier->address ?? 'N/A' }}</div>
+                    <div class="d-flex align-items-center">
+                        <i class="fa fa-phone text-muted me-2"></i>
+                        <strong class="me-2">Phone:</strong>
+                        <span>{{ $supplier->phone_number ?? '-' }}</span>
                     </div>
                 </div>
+
                 <div class="col-md-6 col-lg-4">
-                    <div><strong>🧾 GST Number:</strong> {{ $supplier->gst_number ?? '-' }}</div>
+                    <div class="d-flex align-items-center">
+                        <i class="fa fa-envelope text-muted me-2"></i>
+                        <strong class="me-2">Email:</strong>
+                        <span>{{ $supplier->email ?? '-' }}</span>
+                    </div>
                 </div>
+
                 <div class="col-md-6 col-lg-4">
-                    <div><strong>🏬 Firm Name:</strong> {{ $supplier->firm_name ?? '-' }}</div>
+                    <div class="d-flex align-items-center">
+                        <i class="fa fa-file-invoice text-muted me-2"></i>
+                        <strong class="me-2">GST No.:</strong>
+                        <span class="badge bg-light border text-dark">{{ $supplier->gst ?? '-' }}</span>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4">
+                    <div class="d-flex align-items-center">
+                        <i class="fa fa-capsules text-muted me-2"></i>
+                        <strong class="me-2">DLN:</strong>
+                        <span class="badge bg-light border text-dark">{{ $supplier->dln ?? '-' }}</span>
+                    </div>
+                </div>
+
+                <div class="col-md-12 col-lg-8">
+                    <div class="d-flex">
+                        <i class="fa fa-map-marker-alt text-muted me-2 mt-1"></i>
+                        <div>
+                            <strong>Address:</strong>
+                            <div class="text-muted mt-1">{{ $supplier->address ?? 'N/A' }}</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

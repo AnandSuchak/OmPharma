@@ -15,11 +15,14 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseBillController extends Controller
 {
-    public function index(): View
-    {
-        $purchaseBills = PurchaseBill::with('supplier')->latest()->get();
-        return view('purchase_bills.index', compact('purchaseBills'));
-    }
+        public function index()
+        {
+            $purchaseBills = PurchaseBill::with('supplier')
+                                ->orderByDesc('bill_date')
+                                ->paginate(10); // 10 bills per page
+
+            return view('purchase_bills.index', compact('purchaseBills'));
+        }
 
     public function create(): View
     {
@@ -48,7 +51,16 @@ class PurchaseBillController extends Controller
             return redirect()->route('purchase_bills.index')->with('success', 'Purchase bill created and inventory updated.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
+           if ($request->has('purchase_items')) {
+    foreach ($request->purchase_items as $i => $item) {
+        $request->merge([   
+            "purchase_items.$i.medicine_name" => Medicine::find($item['medicine_id'])->name ?? 'Selected'
+        ]);
+    }
+}
+
+return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
+
         }
     }
 

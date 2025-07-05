@@ -69,3 +69,7 @@
         </form>
     </div>
 @endsection
+@push('scripts')
+<script src="{{ asset('js/customer-validation.js') }}"></script>
+@endpush
+

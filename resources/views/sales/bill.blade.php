@@ -1,98 +1,118 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sale Bill - {{ $sale->bill_number }}</title>
-    <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            font-size: 12px;
-        }
-        .bill-container {
-            width: 80%;
-            margin: auto;
-            padding: 20px;
-            border: 1px solid #ccc;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .customer-details, .bill-details {
-            margin-bottom: 15px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        .total-section {
-            text-align: right;
-        }
-    </style>
-</head>
-<body>
-    <div class="bill-container">
-        <div class="header">
-            <h2>Your Company Name</h2>
-            <p>Your Company Address</p>
-            <p>Contact: Your Phone Number</p>
+@extends('layouts.print')
+
+@section('title', 'Tax Invoice')
+
+@section('content')
+<div class="invoice-container">
+
+
+    {{-- Header Section --}}
+<div class="container border p-1 mb-2" style="font-size: 14px;">
+    <div class="row align-items-start">
+
+        {{-- LEFT: Company Info --}}
+        <div class="col-4">
+            <h5 class="fw-bold text-uppercase mb-1">Om Pharma</h5>
+            <div class="small">3rd Floor, Shop 330, Jasal Complex</div>
+            <div class="small">Nanavati Chowk, Rajkot</div>
+            <div class="small">Ph: 7046016960 &nbsp; | &nbsp; GST: <strong>--</strong></div>
+            <div class="small">DLN: <strong>--</strong> &nbsp; | &nbsp; FSSAI: <strong>--</strong></div>
         </div>
 
-        <div class="bill-details">
-            <strong>Bill Number:</strong> {{ $sale->bill_number }}<br>
-<strong>Sale Date:</strong> {{ \Carbon\Carbon::parse($sale->sale_date)->format('Y-m-d H:i:s') }}
+        {{-- CENTER: Title --}}
+        <div class="col-4 text-center">
+            <h6 class="bg-light text-dark py-1 border fw-bold mb-1">TAX INVOICE</h6>
+            <div class="small"><strong>Bill:</strong> {{ $sale->bill_number }}</div>
+            <div class="small"><strong>Date:</strong> {{ \Carbon\Carbon::parse($sale->sale_date)->format('d M Y') }}</div>
         </div>
 
-        <div class="customer-details">
-            <strong>Customer:</strong> {{ $sale->customer->name ?? 'N/A' }}<br>
-            <strong>DLN:</strong> {{ $sale->customer->dln ?? 'N/A' }}
+        {{-- RIGHT: Customer Info --}}
+        <div class="col-4 text-end">
+            <h6 class="fw-bold text-uppercase mb-1">👤{{ $sale->customer->name }}</h6>
+            <div class="small">{{ $sale->customer->address ?? '-' }}</div>
+            <div class="small">Ph: {{ $sale->customer->phone_number ?? '-' }} &nbsp; | &nbsp; GST: <strong>{{ $sale->customer->gst_number ?? '-' }}</strong></div>
+            <div class="small">DLN: <strong>{{ $sale->customer->dln ?? '-' }}</strong> &nbsp; | &nbsp; PAN: <strong>{{ $sale->customer->pan_number ?? '-' }}</strong></div>
         </div>
+    </div>
+</div>
 
-        <table>
-            <thead>
+
+    {{-- Items Table --}}
+    <div class="container border p-1">
+        <table class="table table-bordered table-sm align-middle mb-0">
+            <thead class="table-light">
                 <tr>
+                    <th>#</th>
                     <th>Medicine</th>
                     <th>Batch</th>
-                    <th>Expiry</th>
-                    <th>Quantity</th>
-                    <th>Price</th>
-                    <th>GST Rate</th>
-                    <th>Discount</th>
-                    <th>Total</th>
+                    <th>Exp</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Disc%</th>
+                    <th>Disc ₹</th>
+                    <th>GST%</th>
+                    <th class="text-end">Amount</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach ($sale->saleItems as $item)
-                    <tr>
-                        <td>{{ $item->medicine->name }}</td>
-                        <td>{{ $item->batch_number }}</td>
-                        <td>{{ $item->expiry_date->format('Y-m-d') }}</td>
-                        <td>{{ $item->quantity }}</td>
-                        <td>{{ $item->sale_price }}</td>
-                        <td>{{ $item->gst_rate }}%</td>
-                        <td>{{ $item->discount_percentage }}%</td>
-                        <td>{{ number_format($item->quantity * $item->sale_price * (1 + ($item->gst_rate / 100)) * (1 - ($item->discount_percentage / 100)), 2) }}</td>
-                    </tr>
-                @endforeach
-            </tbody>
+    {{-- Real sale items (with full borders) --}}
+    @foreach($sale->saleItems as $index => $item)
+        <tr>
+            <td>{{ $index + 1 }}</td>
+            <td>{{ $item->medicine->name }}</td>
+            <td>{{ $item->batch_number }}</td>
+            <td>{{ \Carbon\Carbon::parse($item->expiry_date)->format('M Y') }}</td>
+            <td>{{ $item->quantity }}</td>
+            <td>₹{{ number_format($item->sale_price, 2) }}</td>
+            <td>{{ $item->discount_percentage }}%</td>
+            <td>₹{{ number_format(($item->quantity * $item->sale_price * $item->discount_percentage) / 100, 2) }}</td>
+            <td>{{ $item->gst_rate }}%</td>
+            <td class="text-end">
+                ₹{{ number_format(($item->quantity * $item->sale_price) - (($item->quantity * $item->sale_price * $item->discount_percentage) / 100), 2) }}
+            </td>
+        </tr>
+    @endforeach
+
+    {{-- Blank spacer rows without border --}}
+    @for($i = $sale->saleItems->count(); $i < 10; $i++)
+        <tr style="border: none;">
+            <td colspan="10" style="border: none; height: 32px;"></td>
+        </tr>
+    @endfor
+</tbody>
+
         </table>
-
-        <div class="total-section">
-            <p><strong>Subtotal:</strong> ₹{{ number_format($sale->total_amount - $sale->total_gst_amount, 2) }}</p>
-            <p><strong>Total GST:</strong> ₹{{ number_format($sale->total_gst_amount, 2) }}</p>
-            <p><strong>Grand Total:</strong> ₹{{ number_format($sale->total_amount, 2) }}</p>
-        </div>
-
-        <div style="margin-top: 30px; text-align: center;">
-            <p>Thank you for your business!</p>
-        </div>
     </div>
-</body>
-</html>
+
+    {{-- Totals --}}
+    @php
+        $totalDiscount = $sale->saleItems->sum(function ($item) {
+            return ($item->quantity * $item->sale_price * $item->discount_percentage) / 100;
+        });
+    @endphp
+
+    <table class="table table-bordered table-sm w-100 mb-0 mt-1">
+        <thead class="table-light">
+            <tr>
+                <th class="text-end">Total Discount</th>
+                <th class="text-end">Subtotal (w/o GST)</th>
+                <th class="text-end">Total GST</th>
+                <th class="text-end">Grand Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="text-end">₹{{ number_format($totalDiscount, 2) }}</td>
+                <td class="text-end">₹{{ number_format($sale->subtotal_amount, 2) }}</td>
+                <td class="text-end">₹{{ number_format($sale->total_gst_amount, 2) }}</td>
+                <td class="text-end fw-bold">₹{{ number_format($sale->total_amount, 2) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    {{-- Footer --}}
+    <div class="text-center mt-2">
+        <small class="text-muted">Thank you for your business!</small>
+    </div>
+</div>
+@endsection

@@ -68,3 +68,6 @@
     </div>
 </div>
 @endsection
+@push('scripts')
+<script src="{{ asset('js/supplier-validation.js') }}"></script>
+@endpush

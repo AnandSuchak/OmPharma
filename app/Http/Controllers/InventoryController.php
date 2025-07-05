@@ -13,22 +13,30 @@ class InventoryController extends Controller
     /**
      * Display a listing of the inventory, grouped by medicine.
      */
-    public function index(Request $request): View
-    {
-        $query = Inventory::with('medicine')
-            ->select('medicine_id', DB::raw('SUM(quantity) as total_quantity'))
-            ->groupBy('medicine_id');
+public function index(Request $request): View|\Illuminate\Http\Response
+{
+    $query = Inventory::with('medicine')
+        ->select('medicine_id', DB::raw('SUM(quantity) as total_quantity'))
+        ->groupBy('medicine_id');
 
-        if ($request->filled('search')) {
-            $query->whereHas('medicine', function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%');
-            });
-        }
-
-        $inventories = $query->get();
-
-        return view('inventories.index', compact('inventories'));
+    if ($request->filled('search')) {
+        $query->whereHas('medicine', function ($q) use ($request) {
+            $q->where('name', 'like', '%' . $request->search . '%');
+        });
     }
+
+    $inventories = $query->paginate(10);
+
+    // If AJAX request, return partial HTML only
+    if ($request->ajax()) {
+        return response()->view('inventories.partials.table', compact('inventories'));
+    }
+
+    return view('inventories.index', compact('inventories'));
+}
+
+
+
 
     /**
      * Display the detailed inventory for a specific medicine.

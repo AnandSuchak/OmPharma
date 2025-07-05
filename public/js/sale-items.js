@@ -68,6 +68,29 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
+    // NEW: Fetch pricing data from purchase bill
+    const fetchBatchDetailsFromPurchase = (medicineId, batchNumber, ptrInput, sellingPriceInput, discountInput, gstInput, expiryInput, quantityDisplay, quantityInput) => {
+        if (medicineId && batchNumber) {
+            fetch(`/api/batches/info?medicine_id=${medicineId}&batch_number=${batchNumber}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data) {
+                        ptrInput.value = data.ptr ?? '';
+                        sellingPriceInput.value = data.sale_price ?? '';
+                        discountInput.value = data.discount_percentage ?? '0';
+                        gstInput.value = data.gst_rate ?? '';
+                        expiryInput.value = data.expiry_date?.slice(0, 10) ?? '';
+                        quantityDisplay.textContent = `Available: ${data.quantity}`;
+                        quantityInput.max = data.quantity ?? '';
+                        calculateTotals();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching purchase bill batch info:', error);
+                });
+        }
+    };
+
     const addNewItem = () => {
         const newItem = itemTemplate.cloneNode(true);
 
@@ -140,7 +163,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const row = this.closest('.sale-item');
         const medicineId = row.querySelector('.medicine-select')?.value;
         const batchNumber = row.querySelector('.batch-select')?.value;
-        const expiryDate = row.querySelector('.expiry-date')?.value;
+        const expiryInput = row.querySelector('.expiry-date');
+        const expiryDate = expiryInput?.value;
         const ptrInput = row.querySelector('input[name*="[ptr]"]');
         const sellingPriceInput = row.querySelector('input[name*="[sale_price]"]');
         const discountInput = row.querySelector('input[name*="[discount_percentage]"]');
@@ -150,6 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         fetchAvailableQuantity(medicineId, batchNumber, expiryDate, quantityDisplay, quantityInput);
         fetchBatchInfo(medicineId, batchNumber, expiryDate, ptrInput, sellingPriceInput, discountInput, gstInput, quantityDisplay, quantityInput);
+        fetchBatchDetailsFromPurchase(medicineId, batchNumber, ptrInput, sellingPriceInput, discountInput, gstInput, expiryInput, quantityDisplay, quantityInput);
     });
 
     $(document).on('input', '.quantity-input, .selling-price-input, .gst-input', calculateTotals);
