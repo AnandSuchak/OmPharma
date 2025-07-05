@@ -18,6 +18,7 @@ class PurchaseBillController extends Controller
         public function index()
         {
             $purchaseBills = PurchaseBill::with('supplier')
+                                ->withoutTrashed()
                                 ->orderByDesc('bill_date')
                                 ->paginate(10); // 10 bills per page
 

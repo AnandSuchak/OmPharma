@@ -15,7 +15,7 @@ class CustomerController extends Controller
      */
     public function index(): View
     {
-        $customers = Customer::all();
+       $customers =Customer::withoutTrashed()->get();
         return view('customers.index', compact('customers'));
     }
 

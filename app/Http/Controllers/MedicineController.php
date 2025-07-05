@@ -16,7 +16,7 @@ class MedicineController extends Controller
      */
     public function index(): View
     {
-        $medicines = Medicine::all();
+        $medicines =Medicine::withoutTrashed()->get();
         return view('medicines.index', compact('medicines'));
     }
 

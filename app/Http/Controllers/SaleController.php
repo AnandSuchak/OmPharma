@@ -18,7 +18,7 @@ class SaleController extends Controller
 {
     public function index(): View
     {
-        $sales = Sale::with('customer')->latest()->get();
+        $sales = Sale::with('customer')->withoutTrashed()->latest()->get();
         return view('sales.index', compact('sales'));
     }
 

@@ -15,7 +15,7 @@ class SupplierController extends Controller
      */
     public function index(): View
     {
-        $suppliers = Supplier::all();
+        $suppliers = Supplier::withoutTrashed()->get();
         return view('suppliers.index', compact('suppliers'));
     }
 
