@@ -25,7 +25,7 @@
                         <th>💊 Name</th>
                         <th>🏭 Company</th>
                         <th>📦 Pack</th>
-                        <th>📐 Unit</th>
+                        <th>🔢 Quantity</th>
                         <th>💰 GST</th>
                         <th>🧾 HSN</th>
                         <th style="width: 180px;">⚙️ Actions</th>
@@ -37,7 +37,7 @@
                             <td>{{ $medicine->name }}</td>
                             <td>{{ $medicine->company_name ?? '-' }}</td>
                             <td>{{ $medicine->pack ?? '-' }}</td>
-                            <td>{{ $medicine->unit }}</td>
+                            <td>{{ $medicine->quantity }}</td>
                             <td>
                                 @if ($medicine->gst_rate)
                                     <span class="badge bg-success">{{ $medicine->gst_rate }}%</span>

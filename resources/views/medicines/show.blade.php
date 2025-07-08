@@ -31,7 +31,7 @@
                     <div><strong>📦 Pack:</strong> {{ $medicine->pack ?? '-' }}</div>
                 </div>
                 <div class="col-md-6 col-lg-4">
-                    <div><strong>📐 Unit:</strong> {{ $medicine->unit ?? '-' }}</div>
+                    <div><strong>🔢 Quantity:</strong> {{ $medicine->quantity ?? '-' }}</div>
                 </div>
                 <div class="col-md-6 col-lg-4">
                     <div><strong>💰 GST Rate:</strong> 

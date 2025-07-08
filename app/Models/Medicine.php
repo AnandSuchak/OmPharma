@@ -15,7 +15,7 @@ class Medicine extends Model
         'name',
         'hsn_code',
         'description',
-        'unit',
+        'quantity',
         'gst_rate',
         'pack',
         'company_name',
@@ -31,4 +31,4 @@ class Medicine extends Model
 public function saleItems() {
     return $this->hasMany(SaleItem::class);
 }
-}   
+}

@@ -34,7 +34,7 @@
             </div>
 
             <div class="col-md-3">
-                <label class="form-label">PTR:</label>
+                <label class="form-label">MRP:</label>
                 <input type="number" class="form-control" name="existing_sale_items[{{ $index }}][ptr]" step="0.01" min="0" value="{{ $item->ptr }}">
             </div>
 

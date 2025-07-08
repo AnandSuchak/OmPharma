@@ -1,76 +1,77 @@
 @extends('layouts.app')
 
-@section('title', 'Sales')
+@section('title', 'Sales Bills')
 
 @section('content')
 <div class="card-box">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="mb-0">📦 Sales</h3>
+        <h3 class="mb-0"><i class="fa-solid fa-receipt nav-icon"></i> All Sales Bills</h3>
         <a href="{{ route('sales.create') }}" class="btn btn-primary">
             <i class="fa fa-plus me-1"></i> Create New Sale
         </a>
     </div>
 
-    @if (session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-
-    @if (session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
+    @if ($message = Session::get('success'))
+        <div class="alert alert-success">
+            <i class="fa fa-check-circle me-1"></i> {{ $message }}
+        </div>
     @endif
 
     <div class="card shadow-sm">
-        <div class="card-body table-responsive p-0">
-            <table class="table table-hover table-bordered align-middle mb-0">
+        <div class="card-body p-0">
+            <table class="table table-hover table-bordered mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>🧾 Bill #</th>
+                        <th>📄 Bill #</th>
                         <th>👤 Customer</th>
-                        <th>📅 Sale Date</th>
-                        <th>📌 Status</th>
-                        <th>💰 Total Amount</th>
-                        <th class="text-center">⚙️  Actions</th>
+                        <th>📅 Date</th>
+                        <th>ℹ️ Status</th>
+                        <th class="text-end">💰 Total</th>
+                        <th class="text-center">⚙️ Actions</th>
                     </tr>
                 </thead>
-
                 <tbody>
                     @forelse ($sales as $sale)
                         <tr>
-                            <td>{{ $sale->bill_number }}</td>
-                            <td>{{ $sale->customer->name ?? 'N/A' }}</td>
-                            <td>{{ \Carbon\Carbon::parse($sale->sale_date)->format('d M Y') }}</td>
+                            <td>#{{ $sale->bill_number }}</td>
+                            <td>{{ $sale->customer->name ?? '-' }}</td>
+                            <td>{{ $sale->sale_date->format('d M, Y') }}</td>
                             <td>
-                                <span class="badge bg-{{ $sale->status === 'Completed' ? 'success' : ($sale->status === 'Pending' ? 'warning text-dark' : 'secondary') }}">
-                                    {{ $sale->status }}
-                                </span>
+                                <span class="badge bg-success rounded-pill">Completed</span>
                             </td>
-                            <td>₹{{ number_format($sale->total_amount, 2) }}</td>
+                            <td class="text-end">₹{{ number_format($sale->total_amount, 2) }}</td>
                             <td class="text-center">
-                                <a href="{{ route('sales.show', $sale->id) }}" class="btn btn-sm btn-info me-1">
+                                <a href="{{ route('sales.show', $sale->id) }}" class="btn btn-sm btn-outline-info me-1" title="View">
                                     <i class="fa fa-eye"></i>
                                 </a>
-                                <a href="{{ route('sales.edit', $sale->id) }}" class="btn btn-sm btn-warning me-1">
-                                    <i class="fa fa-edit"></i>
+                                <a href="{{ route('sales.edit', $sale->id) }}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
+                                    <i class="fa fa-pen-to-square"></i>
                                 </a>
-                                <form action="{{ route('sales.destroy', $sale->id) }}" method="POST" class="d-inline-block" onsubmit="return confirm('Are you sure?');">
+                                {{-- The Print Bill button has been added back here --}}
+                                <a href="{{ route('sales.print', $sale->id) }}" class="btn btn-sm btn-outline-dark me-1" target="_blank" title="Print Bill">
+                                    <i class="fa fa-print"></i>
+                                </a>
+                                <form action="{{ route('sales.destroy', $sale->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this sale?')">
                                     @csrf
                                     @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-danger">
-                                        <i class="fa fa-trash-alt"></i>
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                        <i class="fa fa-trash"></i>
                                     </button>
                                 </form>
-                                <a href="{{ route('sales.print', $sale->id) }}" class="btn btn-outline-dark" target="_blank">
-    <i class="fa fa-print me-1"></i> Print Bill
-</a>
-
-
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-center text-muted">No sales records found.</td></tr>
+                        <tr>
+                            <td colspan="6" class="text-center text-muted">No sales found.</td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
+
+            {{-- Pagination --}}
+            <div class="mt-3 px-2">
+                {{ $sales->links('pagination::bootstrap-5') }}
+            </div>
         </div>
     </div>
 </div>

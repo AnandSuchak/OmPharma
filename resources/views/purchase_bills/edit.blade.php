@@ -96,7 +96,7 @@
                         <div class="row mb-2">
                             <div class="col"><label class="form-label">Qty:</label><input type="number" class="form-control item-calc" name="existing_items[{{ $item->id }}][quantity]" value="{{ $item->quantity }}" required></div>
                             <div class="col"><label class="form-label">Purchase Price:</label><input type="number" class="form-control item-calc" name="existing_items[{{ $item->id }}][purchase_price]" value="{{ $item->purchase_price }}" required></div>
-                            <div class="col"><label class="form-label">PTR:</label><input type="number" class="form-control" name="existing_items[{{ $item->id }}][ptr]" value="{{ $item->ptr }}"></div>
+                            <div class="col"><label class="form-label">MRP:</label><input type="number" class="form-control" name="existing_items[{{ $item->id }}][ptr]" value="{{ $item->ptr }}"></div>
                             <div class="col"><label class="form-label">Selling Price:</label><input type="number" class="form-control" name="existing_items[{{ $item->id }}][sale_price]" value="{{ $item->sale_price }}" required></div>
                             <div class="col"><label class="form-label">Discount %:</label><input type="number" class="form-control item-calc" name="existing_items[{{ $item->id }}][discount_percentage]" value="{{ $item->discount_percentage }}"></div>
                             <div class="col"><label class="form-label">GST Rate %:</label><input type="number" class="form-control gst-rate item-calc" name="existing_items[{{ $item->id }}][gst_rate]" value="{{ $item->gst_rate }}"></div>

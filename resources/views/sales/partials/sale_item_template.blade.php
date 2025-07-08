@@ -2,24 +2,29 @@
     <div class="card mb-3 sale-item">
         <div class="card-body">
             <div class="row mb-2">
-                <div class="col-md-6">
-                    <label class="form-label">Medicine:</label>
-                    <select class="form-select medicine-select select2-medicine" name="sale_items[__INDEX__][medicine_id]" required>
+                {{-- Step 1: This dropdown now searches for medicine NAMES only --}}
+                <div class="col-md-4">
+                    <label class="form-label">Medicine Name:</label>
+                    {{-- Note: This select does not have a `name` attribute. It's only for UI interaction. --}}
+                    <select class="form-select medicine-name-select select2-medicine" required>
                         <option></option>
-                        @foreach ($medicines as $medicine)
-                            <option value="{{ $medicine->id }}">
-                                {{ $medicine->name }} ({{ $medicine->company_name ?? 'Generic' }})
-                            </option>
-                        @endforeach
                     </select>
                 </div>
 
+                {{-- Step 2: This NEW dropdown appears to select the specific pack --}}
+                <div class="col-md-2 pack-selector-container" style="display: none;">
+                    <label class="form-label">Pack:</label>
+                    {{-- Note: THIS select has the `name` attribute, as its value is the final medicine_id --}}
+                    <select class="form-select pack-select" name="sale_items[__INDEX__][medicine_id]" required>
+                        </select>
+                </div>
+
+                {{-- Step 3: This dropdown for batches will be populated based on the pack selection --}}
                 <div class="col-md-3">
                     <label class="form-label">Batch Number:</label>
                     <select class="form-select batch-select select2-batch" name="sale_items[__INDEX__][batch_number]" required>
                         <option></option>
-                        <!-- Populated via JS -->
-                    </select>
+                        </select>
                 </div>
 
                 <div class="col-md-3">

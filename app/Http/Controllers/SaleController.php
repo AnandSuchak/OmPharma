@@ -18,7 +18,11 @@ class SaleController extends Controller
 {
     public function index(): View
     {
-        $sales = Sale::with('customer')->withoutTrashed()->latest()->get();
+        $sales = Sale::with('customer')
+                     ->withoutTrashed()
+                     ->latest()
+                     ->paginate(10);
+        
         return view('sales.index', compact('sales'));
     }
 
@@ -81,56 +85,58 @@ class SaleController extends Controller
     public function update(Request $request, Sale $sale): RedirectResponse
     {
         $request->validate([
-            'customer_name' => 'required',
+            'customer_id' => 'required|exists:customers,id',
             'sale_date' => 'required|date',
-            'bill_number' => 'required|unique:sales,bill_number,' . $sale->id,
-            'status' => 'nullable|in:Pending,Completed,Cancelled',
             'notes' => 'nullable',
         ]);
 
-        $sale->update($request->except(['existing_sale_items', 'sale_items']));
+        $saleData = $request->except(['existing_sale_items', 'new_sale_items', '_token', '_method']);
+        $saleData['customer_name'] = Customer::find($request->customer_id)?->name ?? 'Unknown';
+        $sale->update($saleData);
 
-        // Update existing items
         if ($request->has('existing_sale_items')) {
             $this->validateSale($request, 'existing_sale_items');
-
             foreach ($request->input('existing_sale_items') as $itemData) {
                 $item = SaleItem::findOrFail($itemData['id']);
                 $diff = $itemData['quantity'] - $item->quantity;
-
                 $this->adjustInventory($itemData, -$diff);
                 $item->update(Arr::except($itemData, ['id']));
             }
         }
 
-        // Add new items
-        if ($request->has('sale_items')) {
-            $this->validateSale($request, 'sale_items');
-
-            foreach ($request->input('sale_items') as $item) {
+        if ($request->has('new_sale_items')) {
+            $this->validateSale($request, 'new_sale_items');
+            foreach ($request->input('new_sale_items') as $item) {
                 $this->adjustInventory($item, -$item['quantity']);
                 $sale->saleItems()->create($item);
             }
         }
+        
+        if ($request->has('deleted_items')) {
+            foreach ($request->deleted_items as $itemId) {
+                $item = SaleItem::find($itemId);
+                if ($item) {
+                    $this->adjustInventory($item, $item->quantity);
+                    $item->delete();
+                }
+            }
+        }
 
-        // Recalculate totals
+        $sale->load('saleItems');
         $totals = $this->calculateTotals($sale->saleItems);
         $sale->update([
             'total_amount' => $totals['total'],
             'total_gst_amount' => $totals['gst'],
         ]);
 
-        return redirect()->route('sales.bill', $sale->id)->with('success', 'Sale updated successfully.');
+        return redirect()->route('sales.index')->with('success', 'Sale updated successfully.');
     }
 
-public function print($id)
-{
-    $sale = Sale::with(['customer', 'saleItems.medicine'])->findOrFail($id);
-
-    return view('sales.bill', compact('sale'));
-}
-
-
+    public function print($id)
+    {
+        $sale = Sale::with(['customer', 'saleItems.medicine'])->findOrFail($id);
+        return view('sales.bill', compact('sale'));
+    }
 
     public function destroy(Sale $sale): RedirectResponse
     {
@@ -151,45 +157,37 @@ public function print($id)
             return back()->withErrors(['error' => 'Delete failed: ' . $e->getMessage()]);
         }
     }
-public function getAvailableQuantity($medicineId, $batch, $expiry)
-{
-    $quantity = Inventory::where('medicine_id', $medicineId)
-        ->where('batch_number', $batch)
-        ->whereDate('expiry_date', $expiry)
-        ->value('quantity');
 
-    if ($quantity === null) {
+    public function getAvailableQuantity($medicineId, $batch, $expiry)
+    {
+        $query = Inventory::where('medicine_id', $medicineId)
+            ->where('batch_number', $batch);
+            
+        if ($expiry !== 'null' && $expiry) {
+            $query->whereDate('expiry_date', $expiry);
+        } else {
+            $query->whereNull('expiry_date');
+        }
+
         return response()->json([
-            'available_quantity' => 0
+            'available_quantity' => $query->value('quantity') ?? 0
         ]);
     }
 
-    return response()->json([
-        'available_quantity' => $quantity
-    ]);
-}
-
     public function getBatchesForMedicine($medicineId)
     {
-        $batches = PurchaseBillItem::where('medicine_id', $medicineId)
+        $batches = Inventory::where('medicine_id', $medicineId)
             ->where('quantity', '>', 0)
             ->orderBy('expiry_date')
             ->get([
                 'batch_number',
                 'expiry_date',
                 'ptr',
-                'gst_rate',
-                'discount_percentage',
                 'sale_price',
+                'quantity'
             ]);
 
         return response()->json($batches);
-    }
-
-    public function generateBill(Sale $sale): View
-    {
-        $sale->load('saleItems.medicine', 'customer');
-        return view('sales.bill', compact('sale'));
     }
 
     private function generateBillNumber(): string
@@ -197,50 +195,55 @@ public function getAvailableQuantity($medicineId, $batch, $expiry)
         return 'SALE-' . now()->format('YmdHis') . '-' . str_pad(Sale::count() + 1, 4, '0', STR_PAD_LEFT);
     }
 
-private function calculateTotals(iterable $items): array
-{
-    $subtotal = 0;
-    $gst = 0;
+    private function calculateTotals(iterable $items): array
+    {
+        $subtotal = 0;
+        $gst = 0;
 
-    foreach ($items as $item) {
-        $line = $item['sale_price'] * $item['quantity'];
-        $discount = ($item['discount_percentage'] ?? 0);
-        $lineAfterDiscount = $line - ($line * $discount / 100);
-        $gstAmount = ($lineAfterDiscount * ($item['gst_rate'] ?? 0)) / 100;
+        foreach ($items as $item) {
+            $line = ($item['sale_price'] ?? 0) * ($item['quantity'] ?? 0);
+            $discount = ($item['discount_percentage'] ?? 0);
+            $lineAfterDiscount = $line - ($line * $discount / 100);
+            $gstAmount = ($lineAfterDiscount * ($item['gst_rate'] ?? 0)) / 100;
 
-        $subtotal += $lineAfterDiscount;
-        $gst += $gstAmount;
+            $subtotal += $lineAfterDiscount;
+            $gst += $gstAmount;
+        }
+
+        return [
+            'total' => round($subtotal + $gst, 2),
+            'gst' => round($gst, 2),
+        ];
     }
 
-    return [
-        'total' => round($subtotal + $gst, 2),         // ✅ This is now grand total
-        'gst' => round($gst, 2),
-    ];
-}
+    private function adjustInventory(array|SaleItem $item, int $adjustQty): void
+    {
+        $medicineId = is_array($item) ? $item['medicine_id'] : $item->medicine_id;
+        $batchNumber = is_array($item) ? $item['batch_number'] : $item->batch_number;
+        $expiryDate = is_array($item) ? ($item['expiry_date'] ?: null) : $item->expiry_date;
 
+        $inventoryQuery = Inventory::where('medicine_id', $medicineId)
+            ->where('batch_number', $batchNumber);
 
- private function adjustInventory(array|SaleItem $item, int $adjustQty): void
-{
-    $medicineId = is_array($item) ? $item['medicine_id'] : $item->medicine_id;
-    $batchNumber = is_array($item) ? $item['batch_number'] : $item->batch_number;
-    $expiryDate = is_array($item) ? $item['expiry_date'] : $item->expiry_date;
+        // **FIX #1:** Correctly handle null expiry dates when looking up inventory.
+        if ($expiryDate) {
+            $inventoryQuery->where('expiry_date', $expiryDate);
+        } else {
+            $inventoryQuery->whereNull('expiry_date');
+        }
 
-    $inventory = Inventory::where('medicine_id', $medicineId)
-        ->where('batch_number', $batchNumber)
-        ->where('expiry_date', $expiryDate)
-        ->first();
+        $inventory = $inventoryQuery->first();
 
-    if (!$inventory) {
-        throw new \Exception("Inventory not found for medicine ID $medicineId, batch $batchNumber, expiry $expiryDate.");
+        if (!$inventory) {
+            throw new \Exception("Inventory not found for medicine ID $medicineId, batch $batchNumber.");
+        }
+
+        if ($inventory->quantity + $adjustQty < 0) {
+            throw new \Exception("Insufficient stock for adjustment of medicine ID $medicineId, batch $batchNumber.");
+        }
+
+        $inventory->increment('quantity', $adjustQty);
     }
-
-    if ($inventory->quantity + $adjustQty < 0) {
-        throw new \Exception("Insufficient stock for adjustment of medicine ID $medicineId, batch $batchNumber.");
-    }
-
-    $inventory->increment('quantity', $adjustQty);
-}
-
 
     private function validateSale(Request $request, string $key = 'sale_items'): void
     {
@@ -248,7 +251,8 @@ private function calculateTotals(iterable $items): array
             "$key" => 'required|array|min:1',
             "$key.*.medicine_id" => 'required|exists:medicines,id',
             "$key.*.batch_number" => 'required',
-            "$key.*.expiry_date" => 'required|date|after_or_equal:today',
+            // **FIX #2:** Changed 'required' to 'nullable' to allow empty expiry dates.
+            "$key.*.expiry_date" => 'nullable|date',
             "$key.*.quantity" => 'required|integer|min:1',
             "$key.*.sale_price" => 'required|numeric|min:0',
             "$key.*.ptr" => 'nullable|numeric|min:0',
@@ -256,34 +260,12 @@ private function calculateTotals(iterable $items): array
             "$key.*.discount_percentage" => 'nullable|numeric|min:0|max:100',
         ]);
     }
-
-    public function getBatchDetailsFromPurchase(Request $request)
-{
-    $medicineId = $request->input('medicine_id');
-    $batch = $request->input('batch_number');
-
-    if (!$medicineId || !$batch) {
-        return response()->json(['error' => 'Medicine ID and Batch Number are required.'], 400);
+    
+    public function getDetails(Medicine $medicine)
+    {
+        return response()->json([
+            'name_and_company' => $medicine->name . ' (' . ($medicine->company_name ?? 'Generic') . ')',
+            'name_and_company_value' => $medicine->name . '|' . ($medicine->company_name ?? ''),
+        ]);
     }
-
-    $item = \App\Models\PurchaseBillItem::where('medicine_id', $medicineId)
-        ->where('batch_number', $batch)
-        ->latest('id')
-        ->first();
-
-    if (!$item) {
-        return response()->json(['error' => 'Batch details not found.'], 404);
-    }
-
-    return response()->json([
-        'ptr' => $item->ptr,
-        'gst_rate' => $item->gst_rate,
-        'sale_price' => $item->sale_price,
-        'discount_percentage' => $item->discount_percentage,
-        'expiry_date' => $item->expiry_date,
-        'quantity' => $item->quantity,
-    ]);
 }
-
-}
-

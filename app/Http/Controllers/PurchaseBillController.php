@@ -19,7 +19,7 @@ class PurchaseBillController extends Controller
         {
             $purchaseBills = PurchaseBill::with('supplier')
                                 ->withoutTrashed()
-                                ->orderByDesc('bill_date')
+                                ->orderByDesc('id')
                                 ->paginate(10); // 10 bills per page
 
             return view('purchase_bills.index', compact('purchaseBills'));
@@ -168,7 +168,7 @@ return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]
             "$key" => 'required|array|min:1',
             "$key.*.medicine_id" => 'required|exists:medicines,id',
             "$key.*.batch_number" => 'required|string',
-            "$key.*.expiry_date" => 'required|date|after_or_equal:today',
+            "$key.*.expiry_date" => 'nullable|date|after_or_equal:today',
             "$key.*.quantity" => 'required|integer|min:1',
             "$key.*.purchase_price" => 'required|numeric|min:0',
             "$key.*.ptr" => 'nullable|numeric|min:0',

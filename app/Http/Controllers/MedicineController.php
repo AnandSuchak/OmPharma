@@ -37,7 +37,7 @@ class MedicineController extends Controller
             'name' => 'required',
             'hsn_code' => 'nullable',
             'description' => 'nullable',
-            'unit' => 'required',
+            'quantity' => 'required|numeric|min:0',
             'gst_rate' => 'nullable|numeric|min:0|max:100',
             'pack' => 'nullable',
             'company_name' => 'nullable',
@@ -73,7 +73,7 @@ class MedicineController extends Controller
             'name' => 'required',
             'hsn_code' => 'nullable',
             'description' => 'nullable',
-            'unit' => 'required',
+            'quantity' => 'required|numeric|min:0',
             'gst_rate' => 'nullable|numeric|min:0|max:100',
             'pack' => 'nullable',
             'company_name' => 'nullable',
@@ -156,5 +156,56 @@ public function search(Request $request)
     return response()->json($medicines);
 }
 
+/**
+ * Search for unique medicine names and companies.
+ */
+public function searchNames(Request $request)
+{
+    $query = $request->input('q');
+
+    $medicines = Medicine::select('name', 'company_name')
+        ->where('name', 'like', "%{$query}%")
+        ->distinct()
+        ->limit(15)
+        ->get();
+
+    // We need to format the response for Select2
+    $results = $medicines->map(function ($med) {
+        return [
+            'id' => $med->name . '|' . ($med->company_name ?? ''), // Combine name and company as a unique ID
+            'text' => $med->name . ' (' . ($med->company_name ?? 'Generic') . ')'
+        ];
+    });
+
+    return response()->json($results);
+}
+
+/**
+ * Get all packs and their medicine IDs for a given name and company.
+ */
+public function getPacksForName(Request $request)
+{
+    $request->validate([
+        'name' => 'required|string',
+    ]);
+
+    $packs = Medicine::where('name', $request->name)
+        ->when($request->filled('company_name'), function ($query) use ($request) {
+            return $query->where('company_name', $request->company_name);
+        })
+        ->whereNull('deleted_at') // Ensure we only get active medicines
+        ->get(['id', 'pack']);
+
+    return response()->json($packs);
+}
+
+// In app/Http/Controllers/MedicineController.php
+public function getDetails(Medicine $medicine)
+{
+    return response()->json([
+        'name_and_company' => $medicine->name . ' (' . ($medicine->company_name ?? 'Generic') . ')',
+        'name_and_company_value' => $medicine->name . '|' . ($medicine->company_name ?? ''),
+    ]);
+}
 
 }

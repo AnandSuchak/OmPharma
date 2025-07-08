@@ -28,6 +28,15 @@ class Sale extends Model
         'customer_id',
     ];
 
+        /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
+    protected $casts = [
+        'sale_date' => 'datetime', // This is the fix!
+    ];
+
     /**
      * Get the sale items for the sale.
      */

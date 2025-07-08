@@ -34,15 +34,8 @@
                     <input type="text" class="form-control" id="hsn_code" name="hsn_code" value="{{ old('hsn_code') }}">
                 </div>
                 <div class="col-md-6 mb-3">
-                    <label for="unit" class="form-label">Unit:</label>
-                    <select class="form-select" id="unit" name="unit" required>
-                        <option value="Tablet">Tablet</option>
-                        <option value="Capsule">Capsule</option>
-                        <option value="ml">ml</option>
-                        <option value="Strip">Strip</option>
-                        <option value="Bottle">Bottle</option>
-                        <option value="Vial">Vial</option>
-                    </select>
+                    <label for="quantity" class="form-label">Quantity:</label>
+                    <input type="number" class="form-control" id="quantity" name="quantity" value="{{ old('quantity') }}" required min="0">
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="gst_rate" class="form-label">GST Rate (%):</label>

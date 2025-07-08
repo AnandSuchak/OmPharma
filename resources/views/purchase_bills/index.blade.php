@@ -10,7 +10,6 @@
             <i class="fa fa-plus me-1"></i> Create New Bill
         </a>
     </div>
-
     @if ($message = Session::get('success'))
         <div class="alert alert-success">
             <i class="fa fa-check-circle me-1"></i> {{ $message }}

@@ -58,7 +58,7 @@
                         <th>Expiry</th>
                         <th class="text-end">Qty</th>
                         <th class="text-end">Purchase Price</th>
-                        <th class="text-end">PTR</th>
+                        <th class="text-end">MRP</th>
                         <th class="text-end">Selling Price</th>
                         <th class="text-end">GST (%)</th>
                         <th class="text-end">Discount (%)</th>
@@ -69,7 +69,10 @@
                         <tr>
                             <td>{{ $item->medicine->name }}</td>
                             <td>{{ $item->batch_number }}</td>
-                            <td>{{ $item->expiry_date->format('M Y') }}</td>
+                            <td>
+                                {{ $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('M Y') : 'N/A' }}
+                            </td>
+
                             <td class="text-end">{{ $item->quantity }}</td>
                             <td class="text-end">₹{{ $item->purchase_price }}</td>
                             <td class="text-end">₹{{ $item->ptr ?? '-' }}</td>

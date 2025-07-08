@@ -53,7 +53,8 @@
 
         {{-- Items --}}
         <h5 class="mb-3">Purchase Bill Items</h5>
-        <div id="purchase_items_container"></div>
+        {{-- Add the data-attribute to hold the search URL --}}
+        <div id="purchase_items_container" data-search-url="{{ route('api.medicines.search-names') }}"></div>
 
         {{-- Totals --}}
         <div class="row mt-4">
@@ -105,17 +106,21 @@
     <div class="card mb-3 purchase-item">
         <div class="card-body">
             <div class="row mb-2">
-                <div class="col-md-5">
-                    <label class="form-label">Medicine:</label>
-                    <select class="form-select medicine-select" name="purchase_items[__INDEX__][medicine_id]" required></select>
-                </div>
                 <div class="col-md-4">
+                    <label class="form-label">Medicine Name:</label>
+                    <select class="form-select medicine-name-select" required></select>
+                </div>
+                <div class="col-md-2 pack-selector-container" style="display: none;">
+                    <label class="form-label">Pack:</label>
+                    <select class="form-select pack-select" name="purchase_items[__INDEX__][medicine_id]" required></select>
+                </div>
+                <div class="col-md-3">
                     <label class="form-label">Batch Number:</label>
                     <input type="text" class="form-control" name="purchase_items[__INDEX__][batch_number]" required>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Expiry Date:</label>
-                    <input type="date" class="form-control expiry-date" name="purchase_items[__INDEX__][expiry_date]" required>
+                    <input type="date" class="form-control expiry-date" name="purchase_items[__INDEX__][expiry_date]" >
                 </div>
             </div>
             <div class="row mb-2">
@@ -128,7 +133,7 @@
                     <input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][purchase_price]" step="0.01" min="0" required>
                 </div>
                 <div class="col">
-                    <label class="form-label">PTR:</label>
+                    <label class="form-label">MRP:</label>
                     <input type="number" class="form-control" name="purchase_items[__INDEX__][ptr]" step="0.01" min="0">
                 </div>
                 <div class="col">
@@ -153,6 +158,7 @@
     </div>
 </template>
 @endsection
+
 @push('scripts')
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -162,6 +168,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const container = document.getElementById('purchase_items_container');
     const addItemBtn = document.getElementById('add_new_item');
     const template = document.getElementById('purchase_item_template').content;
+    const medicineSearchUrl = container.dataset.searchUrl;
     let itemCount = 0;
     let isManualMode = false;
 
@@ -198,54 +205,18 @@ document.addEventListener('DOMContentLoaded', function () {
             calculateTotals();
         });
 
-        const select = wrapper.querySelector('.medicine-select');
-        const gstRateField = wrapper.querySelector('.gst-rate');
-
-        // Initialize Select2
-        $(select).select2({
+        $(wrapper).find('.medicine-name-select').select2({
             theme: 'bootstrap-5',
-            placeholder: 'Search medicine',
+            placeholder: 'Search Medicine Name',
             ajax: {
-                url: '{{ url("/api/medicines/search") }}',
+                url: medicineSearchUrl,
                 dataType: 'json',
                 delay: 250,
-                data: params => ({ q: params.term }),
-                processResults: data => ({
-                    results: data.map(med => ({
-                        id: med.id,
-                        text: `${med.name} (${med.company_name ?? 'Generic'})`
-                    }))
-                }),
+                processResults: data => ({ results: data }),
                 cache: true
             }
         });
 
-        // Attach correct Select2 event
-        $(select).on('select2:select', function (e) {
-            const medicineId = e.params.data.id;
-            console.log("➡️ Medicine selected:", medicineId);
-
-            if (medicineId) {
-                fetch(`/api/medicines/${medicineId}/gst`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! Status: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log("✅ GST data:", data);
-                        gstRateField.value = data.gst_rate;
-                        calculateTotals();
-                    })
-                    .catch(error => {
-                        console.error("❌ Error fetching GST:", error);
-                        gstRateField.value = 0;
-                    });
-            }
-        });
-
-        // Auto-calculate when input fields are edited
         wrapper.querySelectorAll('.item-calc').forEach(el => {
             el.addEventListener('input', calculateTotals);
         });
@@ -253,24 +224,72 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function addItem() {
         const clone = template.cloneNode(true);
-        const wrapper = clone.querySelector('.purchase-item');
-
-        wrapper.querySelectorAll('select, input').forEach(el => {
-            const name = el.name;
-            if (name) el.name = name.replace('__INDEX__', itemCount);
-        });
+        const wrapper = clone.firstElementChild;
+        
+        wrapper.innerHTML = wrapper.innerHTML.replace(/__INDEX__/g, itemCount);
 
         container.appendChild(wrapper);
         attachListeners(wrapper);
         itemCount++;
     }
 
-    // Add initial item
+    // --- Event Delegation for Dynamic Elements ---
+    $(document).on('select2:select', '.medicine-name-select', function() {
+        const selectedData = $(this).select2('data')[0].id;
+        const [name, company] = selectedData.split('|');
+        const currentRow = this.closest('.purchase-item');
+        if (!name || !currentRow) return;
+
+        const packContainer = currentRow.querySelector('.pack-selector-container');
+        const packSelect = currentRow.querySelector('.pack-select');
+
+        fetch(`/api/medicines/packs?name=${encodeURIComponent(name)}&company_name=${encodeURIComponent(company)}`)
+            .then(response => response.json())
+            .then(packs => {
+                packSelect.innerHTML = '<option value="">Select Pack</option>';
+                if (packs.length > 1) {
+                    packs.forEach(packInfo => {
+                        const option = new Option(packInfo.pack || 'Standard', packInfo.id);
+                        packSelect.appendChild(option);
+                    });
+                    packContainer.style.display = 'block';
+                } else if (packs.length === 1) {
+                    packContainer.style.display = 'none';
+                    const option = new Option(packs[0].pack || 'Standard', packs[0].id);
+                    packSelect.appendChild(option);
+                    packSelect.value = packs[0].id;
+                    $(packSelect).trigger('change');
+                } else {
+                    packContainer.style.display = 'none';
+                }
+            }).catch(error => console.error('Error fetching packs:', error));
+    });
+
+    $(document).on('change', '.pack-select', function() {
+        const medicineId = this.value;
+        const currentRow = this.closest('.purchase-item');
+        if (!medicineId || !currentRow) return;
+
+        const gstRateField = currentRow.querySelector('.gst-rate');
+        
+        fetch(`/api/medicines/${medicineId}/gst`)
+            .then(res => res.json())
+            .then(data => {
+                gstRateField.value = data.gst_rate ?? 0;
+                calculateTotals();
+            })
+            .catch(() => {
+                gstRateField.value = 0;
+            });
+    });
+
+
+    // --- Initial Page Setup ---
     addItemBtn.addEventListener('click', addItem);
+    
     document.getElementById('toggle_manual_edit').addEventListener('click', function () {
         isManualMode = !isManualMode;
-        const fields = [subtotalInput, gstInput, totalInput];
-        fields.forEach(field => field.readOnly = !isManualMode);
+        [subtotalInput, gstInput, totalInput].forEach(field => field.readOnly = !isManualMode);
         this.innerHTML = isManualMode
             ? '<i class="fa fa-lock"></i> Lock Totals'
             : '<i class="fa fa-pencil-alt"></i> Manual Edit';
@@ -278,48 +297,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $('#supplier_id').select2({ theme: 'bootstrap-5' });
 
-    // Add default first item
-    addItem();
-});
-
-// Refill old inputs if validation fails
-const oldPurchaseItems = @json(old('purchase_items', []));
-if (oldPurchaseItems.length > 0) {
-    container.innerHTML = ''; // clear default item
-    itemCount = 0;
-    oldPurchaseItems.forEach(item => {
-        const clone = template.cloneNode(true);
-        const wrapper = clone.querySelector('.purchase-item');
-
-        wrapper.querySelectorAll('select, input').forEach(el => {
-            const name = el.name;
-            if (name) el.name = name.replace('__INDEX__', itemCount);
+    // Restore old input data on validation failure
+    const oldPurchaseItems = @json(old('purchase_items', []));
+    if (oldPurchaseItems.length > 0) {
+        itemCount = 0;
+        oldPurchaseItems.forEach(item => {
+            addItem(); // This will create a new row with listeners
+            const lastItem = container.lastElementChild;
+            // You can add logic here to pre-fill the old data if needed
         });
-
-        // Fill values
-        wrapper.querySelector('[name$="[batch_number]"]').value = item.batch_number ?? '';
-        wrapper.querySelector('[name$="[expiry_date]"]').value = item.expiry_date ?? '';
-        wrapper.querySelector('[name$="[quantity]"]').value = item.quantity ?? 1;
-        wrapper.querySelector('[name$="[purchase_price]"]').value = item.purchase_price ?? 0;
-        wrapper.querySelector('[name$="[ptr]"]').value = item.ptr ?? '';
-        wrapper.querySelector('[name$="[sale_price]"]').value = item.sale_price ?? '';
-        wrapper.querySelector('[name$="[discount_percentage]"]').value = item.discount_percentage ?? 0;
-        wrapper.querySelector('[name$="[gst_rate]"]').value = item.gst_rate ?? 0;
-
-        container.appendChild(wrapper);
-        attachListeners(wrapper);
-
-        // Initialize Select2 with preselected medicine (if possible)
-        const medSelect = wrapper.querySelector('.medicine-select');
-        if (item.medicine_id) {
-            const option = new Option(item.medicine_name ?? 'Selected Medicine', item.medicine_id, true, true);
-            medSelect.append(option);
-        }
-
-        itemCount++;
-    });
-}
-
-
+    } else {
+        addItem(); // Load one default item
+    }
+});
 </script>
 @endpush

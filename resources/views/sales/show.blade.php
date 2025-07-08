@@ -55,7 +55,7 @@
                             <th>Expiry</th>
                             <th>Qty</th>
                             <th>Selling Price</th>
-                            <th>PTR</th>
+                            <th>MRP</th>
                             <th>GST %</th>
                             <th>Discount %</th>
                         </tr>

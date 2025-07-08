@@ -39,7 +39,7 @@
                         <select class="form-select select2" id="customer_id" name="customer_id" data-placeholder="Select Customer" required>
                             <option value="">Select Customer</option>
                             @foreach ($customers as $customer)
-                                <option value="{{ $customer->id }}" {{ (isset($sale) && $sale->customer_id == $customer->id) ? 'selected' : '' }}>
+                                <option value="{{ $customer->id }}" {{ old('customer_id', isset($sale) ? $sale->customer_id : '') == $customer->id ? 'selected' : '' }}>
                                     {{ $customer->name }}
                                 </option>
                             @endforeach
@@ -49,7 +49,7 @@
                     <div class="col-md-6">
                         <label for="sale_date" class="form-label fw-semibold">📅 Sale Date</label>
                         <input type="date" class="form-control" id="sale_date" name="sale_date"
-                               value="{{ $sale->sale_date ?? old('sale_date') ?? now()->toDateString() }}" required>
+                               value="{{ old('sale_date', isset($sale) ? $sale->sale_date : now()->toDateString()) }}" required>
                     </div>
                 </div>
             </div>
@@ -57,8 +57,8 @@
 
         <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
 
-        <div id="sale_items_container">
-            @if(isset($sale) && $sale->saleItems->isNotEmpty())
+        <div id="sale_items_container" data-search-url="{{ route('api.medicines.search-names') }}">
+            @if(!old('sale_items') && isset($sale) && $sale->saleItems->isNotEmpty())
                 @foreach ($sale->saleItems as $index => $item)
                     @include('sales.partials.sale_item', ['index' => $index, 'item' => $item, 'medicines' => $medicines])
                 @endforeach
@@ -122,5 +122,70 @@
 @endsection
 
 @push('scripts')
+{{-- Pass old input data to JavaScript --}}
+<script>
+    const oldSaleItems = @json(old('sale_items'));
+</script>
 <script src="{{ asset('js/sale-items.js') }}"></script>
+<script>
+    // This part of the script runs after sale-items.js and handles re-population
+    document.addEventListener('DOMContentLoaded', function() {
+        if (oldSaleItems && oldSaleItems.length > 0) {
+            const container = document.getElementById('sale_items_container');
+            const template = document.getElementById('sale_item_template').content;
+            
+            // Clear any default items added by sale-items.js
+            container.innerHTML = ''; 
+
+            oldSaleItems.forEach((itemData, index) => {
+                const clone = template.cloneNode(true);
+                const wrapper = clone.querySelector('.sale-item-wrapper');
+                
+                // Set the index for all form elements
+                wrapper.querySelectorAll('[name]').forEach(el => {
+                    el.name = el.name.replace('__INDEX__', index);
+                });
+
+                // Populate the input fields with old data
+                wrapper.querySelector('[name$="[quantity]"]').value = itemData.quantity || '1';
+                wrapper.querySelector('[name$="[ptr]"]').value = itemData.ptr || '';
+                wrapper.querySelector('[name$="[sale_price]"]').value = itemData.sale_price || '';
+                wrapper.querySelector('[name$="[discount_percentage]"]').value = itemData.discount_percentage || '0';
+                wrapper.querySelector('[name$="[gst_rate]"]').value = itemData.gst_rate || '';
+                wrapper.querySelector('[name$="[batch_number]"]').value = itemData.batch_number || '';
+                wrapper.querySelector('[name$="[expiry_date]"]').value = itemData.expiry_date || '';
+
+                container.appendChild(wrapper);
+
+                const newItemElement = container.lastElementChild.querySelector('.sale-item');
+
+                // Special handling for Select2 dropdowns to show the selected value
+                const medicineNameSelect = $(newItemElement).find('.medicine-name-select');
+                const packSelect = $(newItemElement).find('.pack-select');
+
+                if (itemData.medicine_id) {
+                    // We need to fetch the details to properly populate the dropdowns
+                    fetch(`/api/medicines/${itemData.medicine_id}/details`) // Assumes this route exists
+                        .then(res => res.json())
+                        .then(details => {
+                            if (details) {
+                                // Set the medicine name dropdown
+                                const nameOption = new Option(details.name_and_company, details.name_and_company_value, true, true);
+                                medicineNameSelect.append(nameOption).trigger('change');
+
+                                // After the name is set, we need to populate and set the pack
+                                medicineNameSelect.on('select2:select', function() {
+                                    setTimeout(() => {
+                                        packSelect.val(itemData.medicine_id).trigger('change');
+                                    }, 100);
+                                });
+                            }
+                        });
+                }
+            });
+            // Finally, recalculate totals for the restored items
+            window.calculateTotals(); 
+        }
+    });
+</script>
 @endpush
