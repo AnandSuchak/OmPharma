@@ -12,6 +12,7 @@ use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class PurchaseBillController extends Controller
 {
@@ -41,7 +42,9 @@ class PurchaseBillController extends Controller
         DB::beginTransaction();
 
         try {
-            $purchaseBill = PurchaseBill::create($request->except('purchase_items'));
+            $purchaseBillData = $request->except('purchase_items', 'subtotal_amount');
+            $purchaseBill = PurchaseBill::create($purchaseBillData);
+
 
             foreach ($request->purchase_items as $item) {
                 $purchaseBill->purchaseBillItems()->create($item);
@@ -52,16 +55,18 @@ class PurchaseBillController extends Controller
             return redirect()->route('purchase_bills.index')->with('success', 'Purchase bill created and inventory updated.');
         } catch (\Exception $e) {
             DB::rollBack();
-           if ($request->has('purchase_items')) {
-    foreach ($request->purchase_items as $i => $item) {
-        $request->merge([   
-            "purchase_items.$i.medicine_name" => Medicine::find($item['medicine_id'])->name ?? 'Selected'
-        ]);
-    }
-}
-
-return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
-
+            // Add medicine text to the old input for repopulation on the frontend
+            if ($request->has('purchase_items')) {
+                foreach ($request->purchase_items as $i => $item) {
+                    $medicine = Medicine::find($item['medicine_id']);
+                    if ($medicine) {
+                        $request->merge([
+                            "purchase_items.$i.medicine_text" => $medicine->name . ' (' . ($medicine->company_name ?? 'Generic') . ')'
+                        ]);
+                    }
+                }
+            }
+            return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
         }
     }
 
@@ -83,20 +88,29 @@ return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]
 
     public function update(Request $request, PurchaseBill $purchaseBill): RedirectResponse
     {
-        $this->validatePurchaseBill($request);
+        $this->validatePurchaseBill($request, $purchaseBill);
 
         DB::beginTransaction();
 
         try {
-            $purchaseBill->update($request->except(['existing_purchase_items', 'new_purchase_items']));
+            $purchaseBillData = $request->except(['existing_purchase_items', 'new_purchase_items', 'subtotal_amount']);
+            $purchaseBill->update($purchaseBillData);
 
             if ($request->has('existing_purchase_items')) {
-                $this->validateItems($request, 'existing_purchase_items');
+                $this->validateItems($request, 'existing_items');
 
-                foreach ($request->existing_purchase_items as $itemData) {
+                foreach ($request->existing_purchase_items as $itemId => $itemData) {
                     $item = PurchaseBillItem::findOrFail($itemData['id']);
+                    
+                    $originalQuantity = $item->quantity;
+                    $newQuantity = $itemData['quantity'];
+                    $quantityDifference = $newQuantity - $originalQuantity;
+
+                    if ($quantityDifference != 0) {
+                        $this->adjustInventoryOnUpdate($item->medicine_id, $item->batch_number, $item->expiry_date, $quantityDifference);
+                    }
+
                     $item->update(Arr::except($itemData, ['id']));
-                    // Optional: handle inventory adjustment if quantity changes
                 }
             }
 
@@ -130,8 +144,6 @@ return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]
 
                 if ($inventory) {
                     $inventory->decrement('quantity', $item->quantity);
-                    // Optionally delete if zero
-                    // if ($inventory->quantity <= 0) $inventory->delete();
                 }
             }
 
@@ -145,20 +157,24 @@ return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]
         }
     }
 
-    // -------------------------------
-    // ✅ PRIVATE HELPERS
-    // -------------------------------
-
-    private function validatePurchaseBill(Request $request): void
+    private function validatePurchaseBill(Request $request, PurchaseBill $purchaseBill = null): void
     {
+        $billNumberRule = Rule::unique('purchase_bills')->where(function ($query) use ($request) {
+            return $query->where('supplier_id', $request->supplier_id);
+        });
+
+        if ($purchaseBill) {
+            $billNumberRule->ignore($purchaseBill->id);
+        }
+
         $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
             'bill_date' => 'required|date',
-            'bill_number' => 'required|string',
+            'bill_number' => ['required', 'string', $billNumberRule],
             'status' => 'nullable|in:Pending,Received,Cancelled',
-            'total_amount' => 'nullable|numeric|min:0',
-            'total_gst_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
+        ], [
+            'bill_number.unique' => 'This bill number already exists for the selected supplier.'
         ]);
     }
 
@@ -180,22 +196,27 @@ return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]
 
     private function updateInventory(array $item): void
     {
-        $inventory = Inventory::where('medicine_id', $item['medicine_id'])
-            ->where('batch_number', $item['batch_number'])
-            ->where('expiry_date', $item['expiry_date'])
+        $inventory = Inventory::firstOrNew([
+            'medicine_id' => $item['medicine_id'],
+            'batch_number' => $item['batch_number'],
+            'expiry_date' => $item['expiry_date'],
+        ]);
+
+        $inventory->quantity = ($inventory->quantity ?? 0) + $item['quantity'];
+        $inventory->save();
+    }
+    
+    private function adjustInventoryOnUpdate(int $medicineId, ?string $batchNumber, ?string $expiryDate, int $quantityDifference): void
+    {
+        if (!$batchNumber) return;
+
+        $inventory = Inventory::where('medicine_id', $medicineId)
+            ->where('batch_number', $batchNumber)
+            ->where('expiry_date', $expiryDate)
             ->first();
 
         if ($inventory) {
-            $inventory->increment('quantity', $item['quantity']);
-        } else {
-            Inventory::create([
-                'medicine_id' => $item['medicine_id'],
-                'batch_number' => $item['batch_number'],
-                'expiry_date' => $item['expiry_date'],
-                'quantity' => $item['quantity'],
-                'sale_price' => $item['sale_price'],
-                'ptr' => $item['ptr'] ?? null,
-            ]);
+            $inventory->increment('quantity', $quantityDifference);
         }
     }
 }

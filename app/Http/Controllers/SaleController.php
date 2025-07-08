@@ -225,7 +225,6 @@ class SaleController extends Controller
         $inventoryQuery = Inventory::where('medicine_id', $medicineId)
             ->where('batch_number', $batchNumber);
 
-        // **FIX #1:** Correctly handle null expiry dates when looking up inventory.
         if ($expiryDate) {
             $inventoryQuery->where('expiry_date', $expiryDate);
         } else {
@@ -251,7 +250,6 @@ class SaleController extends Controller
             "$key" => 'required|array|min:1',
             "$key.*.medicine_id" => 'required|exists:medicines,id',
             "$key.*.batch_number" => 'required',
-            // **FIX #2:** Changed 'required' to 'nullable' to allow empty expiry dates.
             "$key.*.expiry_date" => 'nullable|date',
             "$key.*.quantity" => 'required|integer|min:1',
             "$key.*.sale_price" => 'required|numeric|min:0',

@@ -35,17 +35,19 @@
                         <select class="form-select" id="supplier_id" name="supplier_id" required>
                             <option value="">Select Supplier</option>
                             @foreach ($suppliers as $supplier)
-                                <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
+                                <option value="{{ $supplier->id }}" {{ old('supplier_id') == $supplier->id ? 'selected' : '' }}>
+                                    {{ $supplier->name }}
+                                </option>
                             @endforeach
                         </select>
                     </div>
                     <div class="col-md-4 mb-3">
                         <label for="bill_number" class="form-label">Bill Number:</label>
-                        <input type="text" class="form-control" id="bill_number" name="bill_number" required>
+                        <input type="text" class="form-control" id="bill_number" name="bill_number" value="{{ old('bill_number') }}" required>
                     </div>
                     <div class="col-md-4 mb-3">
                         <label for="bill_date" class="form-label">Bill Date:</label>
-                        <input type="date" class="form-control" id="bill_date" name="bill_date" value="{{ now()->toDateString() }}" required>
+                        <input type="date" class="form-control" id="bill_date" name="bill_date" value="{{ old('bill_date', now()->toDateString()) }}" required>
                     </div>
                 </div>
             </div>
@@ -53,7 +55,6 @@
 
         {{-- Items --}}
         <h5 class="mb-3">Purchase Bill Items</h5>
-        {{-- Add the data-attribute to hold the search URL --}}
         <div id="purchase_items_container" data-search-url="{{ route('api.medicines.search-names') }}"></div>
 
         {{-- Totals --}}
@@ -75,15 +76,15 @@
                         <div class="row g-2">
                             <div class="col-12">
                                 <label for="subtotal_amount" class="form-label small">Subtotal (w/o GST)</label>
-                                <input type="number" step="0.01" class="form-control" id="subtotal_amount" readonly>
+                                <input type="number" step="0.01" class="form-control" id="subtotal_amount" name="subtotal_amount" value="{{ old('subtotal_amount') }}" readonly>
                             </div>
                             <div class="col-12">
                                 <label for="total_gst_amount" class="form-label small">Total GST</label>
-                                <input type="number" step="0.01" class="form-control" id="total_gst_amount" name="total_gst_amount" readonly>
+                                <input type="number" step="0.01" class="form-control" id="total_gst_amount" name="total_gst_amount" value="{{ old('total_gst_amount') }}" readonly>
                             </div>
                             <div class="col-12">
                                 <label for="total_amount" class="form-label small fw-bold">Grand Total</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="total_amount" name="total_amount" readonly>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="total_amount" name="total_amount" value="{{ old('total_amount') }}" readonly>
                             </div>
                         </div>
                     </div>
@@ -162,153 +163,8 @@
 @push('scripts')
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const container = document.getElementById('purchase_items_container');
-    const addItemBtn = document.getElementById('add_new_item');
-    const template = document.getElementById('purchase_item_template').content;
-    const medicineSearchUrl = container.dataset.searchUrl;
-    let itemCount = 0;
-    let isManualMode = false;
-
-    const subtotalInput = document.getElementById('subtotal_amount');
-    const gstInput = document.getElementById('total_gst_amount');
-    const totalInput = document.getElementById('total_amount');
-
-    function calculateTotals() {
-        if (isManualMode) return;
-        let subtotal = 0, totalGst = 0;
-
-        document.querySelectorAll('.purchase-item').forEach(item => {
-            const qty = parseFloat(item.querySelector('[name*="[quantity]"]').value) || 0;
-            const price = parseFloat(item.querySelector('[name*="[purchase_price]"]').value) || 0;
-            const disc = parseFloat(item.querySelector('[name*="[discount_percentage]"]').value) || 0;
-            const gstRate = parseFloat(item.querySelector('[name*="[gst_rate]"]').value) || 0;
-
-            const base = qty * price;
-            const afterDisc = base - (base * disc / 100);
-            const gst = afterDisc * (gstRate / 100);
-
-            subtotal += afterDisc;
-            totalGst += gst;
-        });
-
-        subtotalInput.value = subtotal.toFixed(2);
-        gstInput.value = totalGst.toFixed(2);
-        totalInput.value = (subtotal + totalGst).toFixed(2);
-    }
-
-    function attachListeners(wrapper) {
-        wrapper.querySelector('.remove-item').addEventListener('click', () => {
-            wrapper.remove();
-            calculateTotals();
-        });
-
-        $(wrapper).find('.medicine-name-select').select2({
-            theme: 'bootstrap-5',
-            placeholder: 'Search Medicine Name',
-            ajax: {
-                url: medicineSearchUrl,
-                dataType: 'json',
-                delay: 250,
-                processResults: data => ({ results: data }),
-                cache: true
-            }
-        });
-
-        wrapper.querySelectorAll('.item-calc').forEach(el => {
-            el.addEventListener('input', calculateTotals);
-        });
-    }
-
-    function addItem() {
-        const clone = template.cloneNode(true);
-        const wrapper = clone.firstElementChild;
-        
-        wrapper.innerHTML = wrapper.innerHTML.replace(/__INDEX__/g, itemCount);
-
-        container.appendChild(wrapper);
-        attachListeners(wrapper);
-        itemCount++;
-    }
-
-    // --- Event Delegation for Dynamic Elements ---
-    $(document).on('select2:select', '.medicine-name-select', function() {
-        const selectedData = $(this).select2('data')[0].id;
-        const [name, company] = selectedData.split('|');
-        const currentRow = this.closest('.purchase-item');
-        if (!name || !currentRow) return;
-
-        const packContainer = currentRow.querySelector('.pack-selector-container');
-        const packSelect = currentRow.querySelector('.pack-select');
-
-        fetch(`/api/medicines/packs?name=${encodeURIComponent(name)}&company_name=${encodeURIComponent(company)}`)
-            .then(response => response.json())
-            .then(packs => {
-                packSelect.innerHTML = '<option value="">Select Pack</option>';
-                if (packs.length > 1) {
-                    packs.forEach(packInfo => {
-                        const option = new Option(packInfo.pack || 'Standard', packInfo.id);
-                        packSelect.appendChild(option);
-                    });
-                    packContainer.style.display = 'block';
-                } else if (packs.length === 1) {
-                    packContainer.style.display = 'none';
-                    const option = new Option(packs[0].pack || 'Standard', packs[0].id);
-                    packSelect.appendChild(option);
-                    packSelect.value = packs[0].id;
-                    $(packSelect).trigger('change');
-                } else {
-                    packContainer.style.display = 'none';
-                }
-            }).catch(error => console.error('Error fetching packs:', error));
-    });
-
-    $(document).on('change', '.pack-select', function() {
-        const medicineId = this.value;
-        const currentRow = this.closest('.purchase-item');
-        if (!medicineId || !currentRow) return;
-
-        const gstRateField = currentRow.querySelector('.gst-rate');
-        
-        fetch(`/api/medicines/${medicineId}/gst`)
-            .then(res => res.json())
-            .then(data => {
-                gstRateField.value = data.gst_rate ?? 0;
-                calculateTotals();
-            })
-            .catch(() => {
-                gstRateField.value = 0;
-            });
-    });
-
-
-    // --- Initial Page Setup ---
-    addItemBtn.addEventListener('click', addItem);
-    
-    document.getElementById('toggle_manual_edit').addEventListener('click', function () {
-        isManualMode = !isManualMode;
-        [subtotalInput, gstInput, totalInput].forEach(field => field.readOnly = !isManualMode);
-        this.innerHTML = isManualMode
-            ? '<i class="fa fa-lock"></i> Lock Totals'
-            : '<i class="fa fa-pencil-alt"></i> Manual Edit';
-    });
-
-    $('#supplier_id').select2({ theme: 'bootstrap-5' });
-
-    // Restore old input data on validation failure
-    const oldPurchaseItems = @json(old('purchase_items', []));
-    if (oldPurchaseItems.length > 0) {
-        itemCount = 0;
-        oldPurchaseItems.forEach(item => {
-            addItem(); // This will create a new row with listeners
-            const lastItem = container.lastElementChild;
-            // You can add logic here to pre-fill the old data if needed
-        });
-    } else {
-        addItem(); // Load one default item
-    }
-});
+    window.oldPurchaseItems = @json(old('purchase_items', []));
 </script>
+<script src="{{ asset('js/purchase-items.js') }}"></script>
 @endpush

@@ -66,7 +66,7 @@
                 <tbody>
                     @foreach($chunk as $index => $item)
                         <tr>
-                            <td>{{ $loop->parent->index * 10 + $index + 1 }}</td>
+                            <td>{{ $loop->parent->index * 10 + $loop->iteration }}</td>
                             <td>{{ $item->medicine->name }}</td>
                             <td>{{ $item->medicine->pack ?? '-' }}</td>
                             <td>{{ $item->batch_number }}</td>
