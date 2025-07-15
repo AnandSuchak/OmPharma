@@ -4,6 +4,7 @@
             <thead class="table-light">
                 <tr>
                     <th>💊 Medicine Name</th>
+                    <th>📦 Pack</th> {{-- NEW COLUMN --}}
                     <th>📦 Total Quantity</th>
                     <th class="text-center">⚙️ Actions</th>
                 </tr>
@@ -11,7 +12,8 @@
             <tbody>
                 @forelse ($inventories as $inventory)
                     <tr>
-                        <td>{{ $inventory->medicine->name }}</td>
+                        <td>{{ $inventory->medicine->name ?? $inventory->name }}</td> {{-- Added $inventory->name fallback if medicine relation isn't loaded --}}
+                        <td>{{ $inventory->medicine->pack ?? $inventory->pack }}</td> {{-- NEW CELL --}}
                         <td>{{ $inventory->total_quantity }}</td>
                         <td class="text-center">
                             <a href="{{ route('inventories.show', $inventory->medicine_id) }}"
@@ -22,7 +24,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="3" class="text-center text-muted">No inventory records found.</td>
+                        <td colspan="4" class="text-center text-muted">No inventory records found.</td> {{-- Adjusted colspan --}}
                     </tr>
                 @endforelse
             </tbody>

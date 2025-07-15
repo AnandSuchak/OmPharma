@@ -34,10 +34,6 @@
                     <input type="text" class="form-control" id="hsn_code" name="hsn_code" value="{{ old('hsn_code') }}">
                 </div>
                 <div class="col-md-6 mb-3">
-                    <label for="quantity" class="form-label">Quantity:</label>
-                    <input type="number" class="form-control" id="quantity" name="quantity" value="{{ old('quantity') }}" required min="0">
-                </div>
-                <div class="col-md-6 mb-3">
                     <label for="gst_rate" class="form-label">GST Rate (%):</label>
                     <input type="number" class="form-control" id="gst_rate" name="gst_rate" min="0" max="100" step="0.01" value="{{ old('gst_rate') }}">
                 </div>

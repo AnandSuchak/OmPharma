@@ -25,7 +25,6 @@
     <form action="{{ route('purchase_bills.store') }}" method="POST">
         @csrf
 
-        {{-- Bill Details --}}
         <div class="card shadow-sm mb-4">
             <div class="card-header"><h5 class="mb-0">Bill Details</h5></div>
             <div class="card-body">
@@ -53,11 +52,9 @@
             </div>
         </div>
 
-        {{-- Items --}}
         <h5 class="mb-3">Purchase Bill Items</h5>
         <div id="purchase_items_container" data-search-url="{{ route('api.medicines.search-names') }}"></div>
 
-        {{-- Totals --}}
         <div class="row mt-4">
             <div class="col-md-6">
                 <button type="button" id="add_new_item" class="btn btn-success">
@@ -102,7 +99,6 @@
     </form>
 </div>
 
-{{-- Template --}}
 <template id="purchase_item_template">
     <div class="card mb-3 purchase-item">
         <div class="card-body">
@@ -113,11 +109,11 @@
                 </div>
                 <div class="col-md-2 pack-selector-container" style="display: none;">
                     <label class="form-label">Pack:</label>
-                    <select class="form-select pack-select" name="purchase_items[__INDEX__][medicine_id]" required></select>
+                    <select class="form-select pack-select" name="purchase_items[__INDEX__][medicine_id]"></select>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Batch Number:</label>
-                    <input type="text" class="form-control" name="purchase_items[__INDEX__][batch_number]" required>
+                    <input type="text" class="form-control" name="purchase_items[__INDEX__][batch_number]">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Expiry Date:</label>
@@ -125,35 +121,21 @@
                 </div>
             </div>
             <div class="row mb-2">
-                <div class="col">
-                    <label class="form-label">Qty:</label>
-                    <input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][quantity]" value="1" min="1" required>
-                </div>
-                <div class="col">
-                    <label class="form-label">Purchase Price:</label>
-                    <input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][purchase_price]" step="0.01" min="0" required>
-                </div>
-                <div class="col">
-                    <label class="form-label">MRP:</label>
-                    <input type="number" class="form-control" name="purchase_items[__INDEX__][ptr]" step="0.01" min="0">
-                </div>
-                <div class="col">
-                    <label class="form-label">Selling Price:</label>
-                    <input type="number" class="form-control" name="purchase_items[__INDEX__][sale_price]" step="0.01" min="0" required>
-                </div>
-                <div class="col">
-                    <label class="form-label">Discount (%):</label>
-                    <input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][discount_percentage]" value="0" step="0.01" min="0">
-                </div>
-                <div class="col">
-                    <label class="form-label">GST Rate (%):</label>
-                    <input type="number" class="form-control item-calc gst-rate" name="purchase_items[__INDEX__][gst_rate]" step="0.01" min="0" readonly>
-                </div>
+                <div class="col"><label class="form-label">Qty:</label><input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][quantity]" value="1" min="1" required></div>
+               <div class="col"><label class="form-label">FQ:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][free_quantity]" value="0" min="0"></div>
+                <div class="col"><label class="form-label">Price:</label><input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][purchase_price]" step="0.01" min="0" required></div>
+                <div class="col"><label class="form-label">MRP:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][ptr]" step="0.01" min="0"></div>
+                <div class="col"><label class="form-label">Sell Price:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][sale_price]" step="0.01" min="0" required></div>
+                <div class="col"><label class="form-label">Cust. Disc%:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][discount_percentage]" value="0" step="0.01" min="0"></div>
+                
+                <!-- START: This is the new field you need to add -->
+                <div class="col"><label class="form-label">Our Disc%:</label><input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][our_discount_percentage]" value="0" step="0.01" min="0"></div>
+                <!-- END: This is the new field you need to add -->
+                
+                <div class="col"><label class="form-label">GST%:</label><input type="number" class="form-control item-calc gst-rate" name="purchase_items[__INDEX__][gst_rate]" step="0.01" min="0" readonly></div>
             </div>
             <div class="text-end">
-                <button type="button" class="btn btn-danger btn-sm remove-item">
-                    <i class="fa fa-trash"></i> Remove
-                </button>
+                <button type="button" class="btn btn-danger btn-sm remove-item"><i class="fa fa-trash"></i> Remove</button>
             </div>
         </div>
     </div>

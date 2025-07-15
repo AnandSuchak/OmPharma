@@ -22,6 +22,7 @@ class SaleItem extends Model
         'batch_number',
         'expiry_date',
         'quantity',
+        'free_quantity',
         'sale_price',
         'ptr',
         'gst_rate',

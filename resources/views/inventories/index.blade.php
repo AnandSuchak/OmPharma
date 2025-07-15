@@ -23,7 +23,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function fetchInventory(url = "{{ route('inventories.index') }}") {
         const searchQuery = searchBox.value;
-        fetch(`${url}?search=${encodeURIComponent(searchQuery)}`, {
+
+        // --- Start of Fix ---
+        // Check if the URL already has a '?' and use '&' or '?' accordingly
+        const separator = url.includes('?') ? '&' : '?';
+        const finalUrl = `${url}${separator}search=${encodeURIComponent(searchQuery)}`;
+        // --- End of Fix ---
+
+        fetch(finalUrl, { // Use the corrected URL
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
             }

@@ -17,10 +17,12 @@ class PurchaseBillItem extends Model
         'batch_number',
         'expiry_date',
         'quantity',
+        'free_quantity', 
         'purchase_price',
         'ptr',
         'gst_rate',
         'discount_percentage',
+        'our_discount_percentage',
             'sale_price',
     ];
 

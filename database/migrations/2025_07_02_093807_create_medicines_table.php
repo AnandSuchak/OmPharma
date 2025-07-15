@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('medicines', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->integer('quantity')->default(0); 
             $table->string('hsn_code')->nullable();
             $table->text('description')->nullable();
             $table->string('unit');

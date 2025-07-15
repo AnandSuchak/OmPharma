@@ -20,15 +20,26 @@ class Medicine extends Model
         'pack',
         'company_name',
     ];
+    
+        /**
+     * Get the medicine name and company name for display.
+     * This accessor is used in the JavaScript for Select2 options.
+     */
+    public function getNameAndCompanyAttribute(): string
+    {
+        return "{$this->name} ({$this->company_name})";
+    }
 
     public function purchaseBillItems(): HasMany
     {
         return $this->hasMany(PurchaseBillItem::class);
     }
-    public function inventories() {
+    public function inventories() 
+    {
     return $this->hasMany(Inventory::class);
-}
-public function saleItems() {
-    return $this->hasMany(SaleItem::class);
-}
+    }
+
+    public function saleItems() {
+        return $this->hasMany(SaleItem::class);
+    }
 }

@@ -8,6 +8,7 @@ use App\Models\PurchaseBillItem;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 
 class MedicineController extends Controller
 {
@@ -16,7 +17,7 @@ class MedicineController extends Controller
      */
     public function index(): View
     {
-        $medicines =Medicine::withoutTrashed()->get();
+        $medicines =Medicine::withoutTrashed()->orderByDesc('id')->get();
         return view('medicines.index', compact('medicines'));
     }
 
@@ -25,7 +26,7 @@ class MedicineController extends Controller
      */
     public function create(): View
     {
-         return view('medicines.create');
+        return view('medicines.create');
     }
 
     /**
@@ -37,7 +38,7 @@ class MedicineController extends Controller
             'name' => 'required',
             'hsn_code' => 'nullable',
             'description' => 'nullable',
-            'quantity' => 'required|numeric|min:0',
+            'quantity' => 'nullable|numeric|min:0',
             'gst_rate' => 'nullable|numeric|min:0|max:100',
             'pack' => 'nullable',
             'company_name' => 'nullable',
@@ -73,7 +74,7 @@ class MedicineController extends Controller
             'name' => 'required',
             'hsn_code' => 'nullable',
             'description' => 'nullable',
-            'quantity' => 'required|numeric|min:0',
+            'quantity' => 'nullable|numeric|min:0',
             'gst_rate' => 'nullable|numeric|min:0|max:100',
             'pack' => 'nullable',
             'company_name' => 'nullable',
@@ -87,125 +88,145 @@ class MedicineController extends Controller
     /**
      * Remove the specified medicine from storage.
      */
-public function destroy(Medicine $medicine): RedirectResponse
-{
-    if (
-        $medicine->purchaseBillItems()->exists() ||
-        $medicine->inventories()->exists() ||
-        $medicine->saleItems()->exists()
-    ) {
-        return back()->withErrors(['error' => 'Cannot delete medicine that has related transactions.']);
+    public function destroy(Medicine $medicine): RedirectResponse
+    {
+        if (
+            $medicine->purchaseBillItems()->exists() ||
+            $medicine->inventories()->exists() ||
+            $medicine->saleItems()->exists()
+        ) {
+            return back()->withErrors(['error' => 'Cannot delete medicine that has related transactions.']);
+        }
+
+        $medicine->delete();
+
+        return redirect()->route('medicines.index')->with('success', 'Medicine deleted successfully.');
     }
 
-    $medicine->delete();
+    /**
+     * API endpoint to get batches for a specific medicine.
+     * Fetches current available quantity from Inventory
+     * and pricing details from the most recent PurchaseBillItem for that batch.
+     * This method is used by the Sales Bill form.
+     */
+    public function getBatches($medicineId)
+    {
+        $batches = Inventory::query()
+            ->join('purchase_bill_items', function ($join) {
+                $join->on('inventories.medicine_id', '=', 'purchase_bill_items.medicine_id')
+                     ->on('inventories.batch_number', '=', 'purchase_bill_items.batch_number');
+            })
+            ->where('inventories.medicine_id', $medicineId)
+            ->where('inventories.quantity', '>', 0) // Crucial: Only show batches with available stock
+            ->whereNull('purchase_bill_items.deleted_at') // Ensure purchase item is not soft-deleted
+            ->select(
+                'inventories.batch_number',
+                'inventories.expiry_date',
+                'inventories.quantity',   // IMPORTANT: This is the current available quantity from Inventory
+                'purchase_bill_items.sale_price',
+                'purchase_bill_items.gst_rate',
+                'purchase_bill_items.ptr'
+            )
+            ->distinct() // Ensures unique batch number/expiry combinations
+            ->orderBy('inventories.expiry_date') // Order by expiry date
+            ->get();
 
-    return redirect()->route('medicines.index')->with('success', 'Medicine deleted successfully.');
-}
-
-public function getBatches($medicineId)
-{
-    // Fetch distinct batch entries from purchase_bill_items for this medicine
-    $batches = PurchaseBillItem::where('medicine_id', $medicineId)
-        ->orderBy('expiry_date', 'asc')
-        ->get([
-            'batch_number',
-            'expiry_date',
-            'quantity',
-            'ptr',
-            'gst_rate',
-            'sale_price',
-            'discount_percentage',
-        ])
-        ->groupBy(function ($item) {
-            // Use batch + expiry as key
-            return $item->batch_number . '_' . $item->expiry_date;
-        })
-        ->map(function ($group) {
-            // Use the latest purchase for this batch
-            $latest = $group->sortByDesc('id')->first();
-
-            return [
-                'batch_number'        => $latest->batch_number,
-                'expiry_date'         => $latest->expiry_date,
-                'quantity'            => $latest->quantity,
-                'ptr'                 => $latest->ptr,
-                'gst_rate'            => $latest->gst_rate,
-                'sale_price'          => $latest->sale_price,
-                'discount_percentage' => $latest->discount_percentage,
-            ];
-        })
-        ->values(); // Reset keys to 0, 1, 2...
-
-    return response()->json($batches);
-}
-
+        return response()->json($batches);
+    }
     
+    /**
+     * API endpoint to get GST rate for a specific medicine.
+     */
     public function getGstRate(Medicine $medicine)
     {
         return response()->json(['gst_rate' => $medicine->gst_rate]);
     }
-public function search(Request $request)
-{
-    $query = $request->input('q');
 
-    $medicines = Medicine::where('name', 'like', "%{$query}%")
-        ->orWhere('company_name', 'like', "%{$query}%")
-        ->limit(20)
-        ->get(['id', 'name', 'company_name']);
+    /**
+     * API endpoint to search medicines by name and company.
+     * This is used by the Sales Bill medicine selection,
+     * formatting results as "Medicine Name - Pack".
+     */
+    public function search(Request $request)
+    {
+        $query = $request->input('q');
 
-    return response()->json($medicines);
-}
+        $medicines = Medicine::where('name', 'like', "%{$query}%")
+            ->orWhere('company_name', 'like', "%{$query}%")
+            ->limit(20)
+            ->get(['id', 'name', 'company_name', 'pack']); // IMPORTANT: Select 'pack' here
 
-/**
- * Search for unique medicine names and companies.
- */
-public function searchNames(Request $request)
-{
-    $query = $request->input('q');
+        // Map the results to the format expected by Select2 (id, text) and include 'pack'
+        $results = $medicines->map(function ($item) {
+            $companyName = $item->company_name ?? 'Generic'; // Pre-process for cleaner string interpolation
+            $packDisplay = $item->pack ? " - {$item->pack}" : ''; // Format pack if it exists
+            
+            return [
+                'id' => $item->id,
+                'text' => "{$item->name} ({$companyName}){$packDisplay}", // Formatted as "Name (Company) - Pack"
+                'pack' => $item->pack // Include the raw pack information
+            ];
+        });
 
-    $medicines = Medicine::select('name', 'company_name')
-        ->where('name', 'like', "%{$query}%")
-        ->distinct()
-        ->limit(15)
-        ->get();
+        return response()->json($results);
+    }
 
-    // We need to format the response for Select2
-    $results = $medicines->map(function ($med) {
-        return [
-            'id' => $med->name . '|' . ($med->company_name ?? ''), // Combine name and company as a unique ID
-            'text' => $med->name . ' (' . ($med->company_name ?? 'Generic') . ')'
-        ];
-    });
+    /**
+     * Search for unique medicine names and companies.
+     * This seems to be primarily used by the Purchase Bill flow if it has a 'pack selection' step.
+     */
+    public function searchNames(Request $request)
+    {
+        $query = $request->input('q');
 
-    return response()->json($results);
-}
+        $medicines = Medicine::select('id', 'name', 'company_name', 'pack')
+            ->where('name', 'like', "%{$query}%")
+            ->distinct()
+            ->limit(15)
+            ->get();
 
-/**
- * Get all packs and their medicine IDs for a given name and company.
- */
-public function getPacksForName(Request $request)
-{
-    $request->validate([
-        'name' => 'required|string',
-    ]);
+        $results = $medicines->map(function ($med) {
+            $companyName = $med->company_name ?? 'Generic';
+            return [
+                'id' => $med->name . '|' . ($med->company_name ?? ''), // Compound ID for generic search
+                'text' => $med->name . ' (' . ($companyName) . ')',
+                'medicine_id' => $med->id,
+                'pack' => $med->pack
+            ];
+        });
 
-    $packs = Medicine::where('name', $request->name)
-        ->when($request->filled('company_name'), function ($query) use ($request) {
-            return $query->where('company_name', $request->company_name);
-        })
-        ->whereNull('deleted_at') // Ensure we only get active medicines
-        ->get(['id', 'pack']);
+        return response()->json($results);
+    }
 
-    return response()->json($packs);
-}
+    /**
+     * Get all packs and their medicine IDs for a given name and company.
+     * This seems specific to the Purchase Bill's workflow for selecting a pack.
+     */
+    public function getPacksForName(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string',
+        ]);
 
-// In app/Http/Controllers/MedicineController.php
-public function getDetails(Medicine $medicine)
-{
-    return response()->json([
-        'name_and_company' => $medicine->name . ' (' . ($medicine->company_name ?? 'Generic') . ')',
-        'name_and_company_value' => $medicine->name . '|' . ($medicine->company_name ?? ''),
-    ]);
-}
+        $packs = Medicine::where('name', $request->name)
+            ->when($request->filled('company_name'), function ($query) use ($request) {
+                return $query->where('company_name', $request->company_name);
+            })
+            ->whereNull('deleted_at')
+            ->get(['id', 'pack']);
 
+        return response()->json($packs);
+    }
+
+    /**
+     * Get details for a specific medicine.
+     */
+    public function getDetails(Medicine $medicine)
+    {
+        return response()->json([
+            'name_and_company' => $medicine->name . ' (' . ($medicine->company_name ?? 'Generic') . ')',
+            'name_and_company_value' => $medicine->name . '|' . ($medicine->company_name ?? ''),
+            'pack' => $medicine->pack,
+        ]);
+    }
 }

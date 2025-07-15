@@ -36,7 +36,7 @@
 
                     <div class="col-md-6">
                         <label for="phone_number" class="form-label">📞 Phone Number:</label>
-                        <input type="text" class="form-control" id="phone_number" name="phone_number" value="{{ $supplier->phone_number }}" required>
+                        <input type="text" class="form-control" id="phone_number" name="phone_number" value="{{ $supplier->phone_number }}" >
                     </div>
 
                     <div class="col-md-6">

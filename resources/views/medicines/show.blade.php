@@ -31,9 +31,6 @@
                     <div><strong>📦 Pack:</strong> {{ $medicine->pack ?? '-' }}</div>
                 </div>
                 <div class="col-md-6 col-lg-4">
-                    <div><strong>🔢 Quantity:</strong> {{ $medicine->quantity ?? '-' }}</div>
-                </div>
-                <div class="col-md-6 col-lg-4">
                     <div><strong>💰 GST Rate:</strong> 
                         <span class="badge bg-success">{{ $medicine->gst_rate ? $medicine->gst_rate . '%' : 'N/A' }}</span>
                     </div>

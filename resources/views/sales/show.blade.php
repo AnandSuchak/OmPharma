@@ -54,6 +54,7 @@
                             <th>Batch</th>
                             <th>Expiry</th>
                             <th>Qty</th>
+                                                       <th class="text-end">FQ</th>
                             <th>Selling Price</th>
                             <th>MRP</th>
                             <th>GST %</th>
@@ -67,6 +68,7 @@
                                 <td>{{ $item->batch_number }}</td>
                                 <td>{{ \Carbon\Carbon::parse($item->expiry_date)->format('M Y') }}</td>
                                 <td>{{ $item->quantity }}</td>
+                                                                <td class="text-end">{{ $item->free_quantity ?? 0 }}</td> 
                                 <td>₹{{ number_format($item->sale_price, 2) }}</td>
                                 <td>{{ $item->ptr ?? '—' }}</td>
                                 <td>{{ $item->gst_rate ?? '—' }}</td>

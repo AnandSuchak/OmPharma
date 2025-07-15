@@ -13,7 +13,6 @@
     {{-- Final Print Styles --}}
     <style>
         @page {
-            /* Key Change: Reduced margins to give content more space */
             size: A5 landscape;
             margin: 5mm;
         }
@@ -21,7 +20,7 @@
         html, body {
             margin: 0;
             padding: 0;
-            font-size: 9.5px; /* Slightly smaller base font for compactness */
+            font-size: 11px;
             color: #000;
             background-color: #fff;
             -webkit-print-color-adjust: exact;
@@ -29,13 +28,29 @@
         }
 
         .invoice-container {
-            width: 100%; /* Use the full printable area */
+            width: 100%;
+        }
+        
+        table {
+            font-size: 10px;
+            page-break-inside: avoid !important;
         }
 
-        table, tr, td, th {
-            page-break-inside: avoid !important;
-            font-size: 9px; /* Smaller font for the table */
+        /* NEW: Rule to make the header row taller */
+        table thead th {
+            padding-top: 8px;
+            padding-bottom: 8px;
+            vertical-align: middle; /* Ensures text stays centered vertically */
+        }
+        
+        table.table-bordered th,
+        table.table-bordered td {
+            border: 1px solid #000 !important;
             vertical-align: middle;
+        }
+        
+        .text-center-column {
+            text-align: center;
         }
 
         .no-print {
@@ -45,14 +60,20 @@
             z-index: 999;
         }
 
-        /* --- Simplified & More Reliable Page Break Logic --- */
-        /* This wrapper will contain one full page's content */
         .printable-page {
             page-break-inside: avoid;
+            border: 2px solid #000;
         }
-        /* This adds a page break *before* any subsequent pages */
         .printable-page + .printable-page {
             page-break-before: always;
+        }
+
+        .printable-page .container.border {
+            border: 1.5px solid #000 !important;
+        }
+
+        .row > .border-end {
+            border-color: #000 !important;
         }
 
         @media print {

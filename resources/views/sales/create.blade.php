@@ -2,15 +2,31 @@
 
 @section('title', isset($sale) ? 'Edit Sale' : 'Create New Sale')
 
+@push('styles')
+<style>
+    /* Add any specific styles if needed */
+    .select2-container--bootstrap-5 .select2-selection {
+        min-height: 38px;
+        padding-top: 0.2rem;
+        padding-bottom: 0.2rem;
+    }
+    /* Style for invalid item rows on submit */
+    .sale-item-wrapper.border-danger {
+        border: 2px solid var(--bs-danger) !important;
+        box-shadow: 0 0 0 0.25rem rgba(var(--bs-danger-rgb), .25) !important;
+    }
+</style>
+@endpush
+
 @section('content')
 <div class="card-box">
+    {{-- Header --}}
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3 class="mb-0">{{ isset($sale) ? '✏️ Edit Sale' : '📝 Create New Sale' }}</h3>
-        <a href="{{ route('sales.index') }}" class="btn btn-outline-secondary">
-            <i class="fa fa-arrow-left me-1"></i> Back
-        </a>
+        <a href="{{ route('sales.index') }}" class="btn btn-outline-secondary"><i class="fa fa-arrow-left me-1"></i> Back</a>
     </div>
 
+    {{-- Error Display --}}
     @if ($errors->any())
         <div class="alert alert-danger">
             <strong>Whoops!</strong> Please fix the following issues:
@@ -22,170 +38,110 @@
         </div>
     @endif
 
+    {{-- Sale Form --}}
     <form action="{{ isset($sale) ? route('sales.update', $sale->id) : route('sales.store') }}" method="POST">
         @csrf
-        @if(isset($sale))
-            @method('PUT')
-        @endif
+        @if(isset($sale)) @method('PUT') @endif
+        <input type="hidden" id="deleted_items" name="deleted_items" value="">
 
+        {{-- Customer and Date Details --}}
         <div class="card shadow-sm mb-4">
-            <div class="card-header bg-light">
-                <h5 class="card-title mb-0 text-primary"><i class="fa fa-info-circle me-1"></i>Sale Details</h5>
-            </div>
+            <div class="card-header bg-light"><h5 class="card-title mb-0 text-primary"><i class="fa fa-info-circle me-1"></i>Sale Details</h5></div>
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label for="customer_id" class="form-label fw-semibold">👤 Customer</label>
-                        <select class="form-select select2" id="customer_id" name="customer_id" data-placeholder="Select Customer" required>
-                            <option value="">Select Customer</option>
+                        <select class="form-select" id="customer_id" name="customer_id" data-placeholder="Select or search customer..." required>
+                            <option></option> {{-- Placeholder for Select2 --}}
                             @foreach ($customers as $customer)
-                                <option value="{{ $customer->id }}" {{ old('customer_id', isset($sale) ? $sale->customer_id : '') == $customer->id ? 'selected' : '' }}>
+                                <option value="{{ $customer->id }}" {{ old('customer_id', $sale->customer_id ?? '') == $customer->id ? 'selected' : '' }}>
                                     {{ $customer->name }}
                                 </option>
                             @endforeach
                         </select>
                     </div>
-
                     <div class="col-md-6">
                         <label for="sale_date" class="form-label fw-semibold">📅 Sale Date</label>
-                        <input type="date" class="form-control" id="sale_date" name="sale_date"
-                               value="{{ old('sale_date', isset($sale) ? $sale->sale_date : now()->toDateString()) }}" required>
+                        <input type="date" class="form-control" id="sale_date" name="sale_date" value="{{ old('sale_date', isset($sale) ? $sale->sale_date->toDateString() : now()->toDateString()) }}" required>
                     </div>
                 </div>
             </div>
         </div>
 
+        {{-- Sale Items Container --}}
         <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
-
-        <div id="sale_items_container" data-search-url="{{ route('api.medicines.search-names') }}">
-            @if(!old('sale_items') && isset($sale) && $sale->saleItems->isNotEmpty())
-                @foreach ($sale->saleItems as $index => $item)
-                    @include('sales.partials.sale_item', ['index' => $index, 'item' => $item, 'medicines' => $medicines])
+        <div id="sale_items_container" 
+             data-search-url="{{ route('api.medicines.search') }}" 
+             {{-- CORRECTED: Pass the base batch URL dynamically from Blade --}}
+             data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}"> 
+            
+            {{-- Populate existing items for the edit form --}}
+            @if(isset($sale) && !old('new_sale_items') && !old('existing_sale_items'))
+                @foreach ($sale->saleItems as $item)
+                    <div class="sale-item-wrapper" 
+                          data-existing-item="true"
+                          data-item-id="{{ $item->id }}"
+                          data-medicine-id="{{ $item->medicine_id }}"
+                          data-medicine-name="{{ $item->medicine->name_and_company }}"
+                          data-batch-number="{{ $item->batch_number }}"
+                          data-quantity="{{ $item->quantity }}"
+                          data-free-quantity="{{ $item->free_quantity }}"
+                          data-sale-price="{{ $item->sale_price }}"
+                          data-gst-rate="{{ $item->gst_rate }}"
+                          data-discount-percentage="{{ $item->discount_percentage }}"
+                          data-ptr="{{ $item->ptr ?? '' }}"
+                          data-pack="{{ $item->medicine?->pack ?? '' }}"> {{-- IMPORTANT: Add data-pack here, using nullsafe --}}
+                        @include('sales.partials.sale_item_row', ['item' => $item])
+                    </div>
                 @endforeach
             @endif
         </div>
 
+        {{-- Action Buttons and Totals --}}
         <div class="d-flex justify-content-between align-items-center mt-3">
-            <button type="button" id="add_new_item" class="btn btn-success">
-                <i class="fa fa-plus me-1"></i> Add Item
-            </button>
-
-            <div class="text-end">
-                <p class="mb-1"><strong>Subtotal:</strong> ₹<span id="subtotal">0.00</span></p>
-                <p class="mb-1"><strong>Total GST:</strong> ₹<span id="total_gst">0.00</span></p>
-                <h5 class="mb-0"><strong>Grand Total:</strong> ₹<span id="grand_total">0.00</span></h5>
+            <button type="button" id="add_new_item" class="btn btn-success"><i class="fa fa-plus me-1"></i> Add Item</button>
+            <div class="text-end" style="width: 250px;">
+                <div class="d-flex justify-content-between mb-1">
+                    <strong>Subtotal:</strong>
+                    <span>₹<span id="subtotal">0.00</span></span>
+                </div>
+                <div class="d-flex justify-content-between mb-1">
+                    <strong>Total GST:</strong>
+                    <span>₹<span id="total_gst">0.00</span></span>
+                </div>
+                <hr class="my-1">
+                <div class="d-flex justify-content-between h5 mb-0">
+                    <strong>Grand Total:</strong>
+                    <strong>₹<span id="grand_total">0.00</span></strong>
+                </div>
             </div>
         </div>
-
         <hr class="my-4">
-
         <div class="text-end">
-            <button type="submit" class="btn btn-primary btn-lg">
-                {{ isset($sale) ? 'Update Sale' : 'Create Sale' }}
-            </button>
+            <button type="submit" class="btn btn-primary btn-lg">{{ isset($sale) ? 'Update Sale' : 'Create Sale' }}</button>
         </div>
     </form>
 </div>
-<style>
-    .select2-container--bootstrap-5 .select2-selection {
-    min-height: 38px;
-    padding: 0.375rem 0.75rem;
-    border: 1px solid #ced4da;
-    border-radius: 0.375rem;
-    font-size: 1rem;
-    line-height: 1.5;
-    background-color: #fff;
-}
 
-.select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
-    padding: 0;
-    margin: 0;
-    line-height: 1.5;
-}
-
-.select2-container--bootstrap-5 .select2-selection--single {
-    height: auto;
-    display: flex;
-    align-items: center;
-}
-
-.select2-container--bootstrap-5 .select2-selection__arrow {
-    height: 100%;
-    right: 0.75rem;
-    top: 0.5rem;
-}
-
-</style>
+{{-- This template is used by JavaScript to create new item rows --}}
 <template id="sale_item_template">
-    @include('sales.partials.sale_item_template', ['index' => '__INDEX__', 'medicines' => $medicines])
+    <div class="sale-item-wrapper">
+        @include('sales.partials.sale_item_row', ['item' => null])
+    </div>
 </template>
 @endsection
 
 @push('scripts')
-{{-- Pass old input data to JavaScript --}}
 <script>
-    const oldSaleItems = @json(old('sale_items'));
+    // Pass old input to JS for repopulation on validation error
+    window.oldInput = {
+        new_items: @json(old('new_sale_items')),
+        existing_items: @json(old('existing_sale_items'))
+    };
 </script>
-<script src="{{ asset('js/sale-items.js') }}"></script>
-<script>
-    // This part of the script runs after sale-items.js and handles re-population
-    document.addEventListener('DOMContentLoaded', function() {
-        if (oldSaleItems && oldSaleItems.length > 0) {
-            const container = document.getElementById('sale_items_container');
-            const template = document.getElementById('sale_item_template').content;
-            
-            // Clear any default items added by sale-items.js
-            container.innerHTML = ''; 
-
-            oldSaleItems.forEach((itemData, index) => {
-                const clone = template.cloneNode(true);
-                const wrapper = clone.querySelector('.sale-item-wrapper');
-                
-                // Set the index for all form elements
-                wrapper.querySelectorAll('[name]').forEach(el => {
-                    el.name = el.name.replace('__INDEX__', index);
-                });
-
-                // Populate the input fields with old data
-                wrapper.querySelector('[name$="[quantity]"]').value = itemData.quantity || '1';
-                wrapper.querySelector('[name$="[ptr]"]').value = itemData.ptr || '';
-                wrapper.querySelector('[name$="[sale_price]"]').value = itemData.sale_price || '';
-                wrapper.querySelector('[name$="[discount_percentage]"]').value = itemData.discount_percentage || '0';
-                wrapper.querySelector('[name$="[gst_rate]"]').value = itemData.gst_rate || '';
-                wrapper.querySelector('[name$="[batch_number]"]').value = itemData.batch_number || '';
-                wrapper.querySelector('[name$="[expiry_date]"]').value = itemData.expiry_date || '';
-
-                container.appendChild(wrapper);
-
-                const newItemElement = container.lastElementChild.querySelector('.sale-item');
-
-                // Special handling for Select2 dropdowns to show the selected value
-                const medicineNameSelect = $(newItemElement).find('.medicine-name-select');
-                const packSelect = $(newItemElement).find('.pack-select');
-
-                if (itemData.medicine_id) {
-                    // We need to fetch the details to properly populate the dropdowns
-                    fetch(`/api/medicines/${itemData.medicine_id}/details`) // Assumes this route exists
-                        .then(res => res.json())
-                        .then(details => {
-                            if (details) {
-                                // Set the medicine name dropdown
-                                const nameOption = new Option(details.name_and_company, details.name_and_company_value, true, true);
-                                medicineNameSelect.append(nameOption).trigger('change');
-
-                                // After the name is set, we need to populate and set the pack
-                                medicineNameSelect.on('select2:select', function() {
-                                    setTimeout(() => {
-                                        packSelect.val(itemData.medicine_id).trigger('change');
-                                    }, 100);
-                                });
-                            }
-                        });
-                }
-            });
-            // Finally, recalculate totals for the restored items
-            window.calculateTotals(); 
-        }
-    });
-</script>
+{{-- Ensure Select2 and jQuery are loaded before your custom script --}}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script> {{-- Make sure jQuery is loaded --}}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="{{ asset('js/sale-items.js?v=1.5') }}"></script> {{-- Increment version for cache busting --}}
 @endpush

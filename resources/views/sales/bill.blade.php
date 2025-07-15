@@ -6,8 +6,8 @@
 <div class="invoice-container">
 
 @php
-    // --- Data Preparation ---
-    $chunks = $sale->saleItems->chunk(10); // Still allows for multi-page invoices if needed
+    // This creates pages for every 10 items
+    $chunks = $sale->saleItems->chunk(10);
     $totalDiscount = $sale->saleItems->sum(fn($item) => ($item->quantity * $item->sale_price * $item->discount_percentage) / 100);
     $subtotal = $sale->subtotal_amount ?? 0;
     $gstAmount = $sale->total_gst_amount ?? 0;
@@ -16,104 +16,145 @@
     $totalBeforeRoundOff = $sale->total_amount ?? 0;
     $roundedTotal = round($totalBeforeRoundOff);
     $roundOff = round($roundedTotal - $totalBeforeRoundOff, 2);
-    $formatter = new \NumberFormatter('en_IN', \NumberFormatter::SPELLOUT);
-    $amountInWords = ucfirst($formatter->format($roundedTotal));
+
+    // --- NEW: Logic to calculate GST Summary ---
+    $gstSummary = [];
+    foreach ($sale->saleItems as $item) {
+        $rate = $item->gst_rate;
+        if (!isset($gstSummary[$rate])) {
+            $gstSummary[$rate] = ['taxable_value' => 0, 'cgst' => 0, 'sgst' => 0, 'total_gst' => 0];
+        }
+        // Calculate taxable value for the item (after discount)
+        $itemSubtotal = $item->quantity * $item->sale_price;
+        $itemDiscountAmount = ($itemSubtotal * $item->discount_percentage) / 100;
+        $taxableValue = $itemSubtotal - $itemDiscountAmount;
+        
+        // Calculate GST for the item
+        $itemGst = $taxableValue * ($rate / 100);
+
+        // Add to the summary array
+        $gstSummary[$rate]['taxable_value'] += $taxableValue;
+        $gstSummary[$rate]['cgst'] += $itemGst / 2;
+        $gstSummary[$rate]['sgst'] += $itemGst / 2;
+        $gstSummary[$rate]['total_gst'] += $itemGst;
+    }
+    ksort($gstSummary); // Sorts the array by GST rate (e.g., 5%, 12%, 18%)
 @endphp
 
 @foreach($chunks as $chunk)
-    {{-- This single div now correctly manages page breaks --}}
     <div class="printable-page">
-        {{-- Header: Reduced padding (p-1) and margin (mb-1) for a tighter layout --}}
-        <div class="container border p-1 mb-1" style="font-size: 10px;">
+        {{-- Header Box --}}
+        <div class="container border p-1" style="font-size: 11px;">
             <div class="row align-items-center">
-                <div class="col-4">
+                <div class="col-4 text-center border-end">
                     <h6 class="fw-bold text-uppercase text-primary mb-1">OM PHARMA</h6>
                     <div>3rd Floor, Shop 330, Jasal Complex, Rajkot</div>
-                    <div>📞 7046016960 &nbsp; | &nbsp; GST: <strong>--</strong></div>
-                    <div>DLN: <strong>--</strong> &nbsp; | &nbsp; FSSAI: <strong>--</strong></div>
+                    <div>📞 7046016960 &nbsp; | &nbsp; GST: <strong>24IPLPS7448N1ZS</strong></div>
+                    <div>DLN &nbsp;| 20B : <strong> 252923</strong> &nbsp; | &nbsp; 21B : <strong>252924</strong></div>
                 </div>
-                <div class="col-4 text-center">
+                <div class="col-4 text-center border-end">
                     <h6 class="bg-light text-dark py-1 border fw-bold mb-1">TAX INVOICE</h6>
                     <div><strong>Bill:</strong> {{ $sale->bill_number }}</div>
                     <div><strong>Date:</strong> {{ \Carbon\Carbon::parse($sale->sale_date)->format('d M Y') }}</div>
+                    @if($loop->count > 1)
+                        <div><strong>Page:</strong> {{ $loop->iteration }} of {{ $loop->count }}</div>
+                    @endif
                 </div>
-                <div class="col-4 text-end">
+                <div class="col-4 text-center">
                     <h6 class="fw-bold text-uppercase mb-1">👤 {{ $sale->customer->name }}</h6>
                     <div>{{ $sale->customer->address ?? '-' }}</div>
-                    <div>📞 {{ $sale->customer->phone_number ?? '-' }} &nbsp; | &nbsp; GST: <strong>{{ $sale->customer->gst_number ?? '-' }}</strong></div>
+                    <div>GST: <strong>{{ $sale->customer->gst_number ?? '-' }}</strong> &nbsp; | &nbsp; PAN: <strong>{{ $sale->customer->pan_number ?? '-' }}</strong></div>
+                    <div>DL no: <strong>{{ $sale->customer->dln ?? '-' }}</strong></div>
                 </div>
             </div>
         </div>
 
-        {{-- Items Table: Also has reduced padding and margin --}}
-        <div class="container border p-1 mb-1">
+        {{-- Items Table --}}
+        <div class="container border p-1">
             <table class="table table-bordered table-sm align-middle mb-0">
                 <thead class="table-light text-center">
                     <tr>
                         <th>#</th>
                         <th>Medicine</th>
-                        <th>Pack</th>
-                        <th>Batch</th>
-                        <th>Exp</th>
-                        <th>Qty</th>
+                        <th class="text-center-column">Pack</th>
+                        <th class="text-center-column">Batch</th>
+                        <th class="text-center-column">Exp</th>
+                        <th class="text-center-column">Qty</th>
+                        <th class="text-end">FQ</th>
                         <th>Rate</th>
-                        <th>Disc%</th>
-                        <th>Disc ₹</th>
-                        <th>GST%</th>
+                        <th class="text-center-column">Disc%</th>
+                        <th class="text-center-column">Disc ₹</th>
+                        <th class="text-center-column">GST%</th>
                         <th class="text-end">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($chunk as $index => $item)
                         <tr>
-                            <td>{{ $loop->parent->index * 10 + $loop->iteration }}</td>
+                            <td class="text-center-column">{{ $loop->parent->index * 10 + $loop->iteration }}</td>
                             <td>{{ $item->medicine->name }}</td>
-                            <td>{{ $item->medicine->pack ?? '-' }}</td>
-                            <td>{{ $item->batch_number }}</td>
-                            <td>{{ \Carbon\Carbon::parse($item->expiry_date)->format('M Y') }}</td>
-                            <td>{{ $item->quantity }}</td>
-                            <td>₹{{ number_format($item->sale_price, 2) }}</td>
-                            <td>{{ $item->discount_percentage }}%</td>
-                            <td>₹{{ number_format(($item->quantity * $item->sale_price * $item->discount_percentage) / 100, 2) }}</td>
-                            <td>{{ $item->gst_rate }}%</td>
-                            <td class="text-end">
-                                ₹{{ number_format(($item->quantity * $item->sale_price) - (($item->quantity * $item->sale_price * $item->discount_percentage) / 100), 2) }}
-                            </td>
+                            <td class="text-center-column">{{ $item->medicine->pack ?? '-' }}</td>
+                            <td class="text-center-column">{{ $item->batch_number }}</td>
+                            <td class="text-center-column">{{ \Carbon\Carbon::parse($item->expiry_date)->format('M Y') }}</td>
+                            <td class="text-center-column">{{ $item->quantity }}</td>
+                            <td class="text-end">{{ $item->free_quantity }}</td>
+                            <td>{{ number_format($item->sale_price, 2) }}</td>
+                            <td class="text-center-column">{{ $item->discount_percentage }}%</td>
+                            <td class="text-center-column">{{ number_format(($item->quantity * $item->sale_price * $item->discount_percentage) / 100, 2) }}</td>
+                            <td class="text-center-column">{{ $item->gst_rate }}%</td>
+                            <td class="text-end">{{ number_format(($item->quantity * $item->sale_price) - (($item->quantity * $item->sale_price * $item->discount_percentage) / 100), 2) }}</td>
                         </tr>
                     @endforeach
 
-                    {{-- Empty rows to fill space, with reduced height for compactness --}}
                     @for ($i = $chunk->count(); $i < 10; $i++)
-                        <tr><td colspan="11" style="height: 23.5px; padding: 0; border-left: 1px solid #fff; border-right: 1px solid #fff;"></td></tr>
+                        <tr>
+                            <td colspan="11" style="height: 24px; border: none !important;"></td>
+                        </tr>
                     @endfor
                 </tbody>
             </table>
         </div>
 
-        {{-- Totals and Footer (only appears on the last page of the loop) --}}
+        {{-- Totals and Footer --}}
         @if ($loop->last)
         <div class="container border p-1">
             <div class="row">
-                <div class="col-6">
-                    <div class="mb-1">
-                        <strong>Amount in Words:</strong>
-                        <em>{{ $amountInWords }} rupees only.</em>
-                    </div>
-                    <div style="height: 45px; border-top: 1px dashed #ccc; margin-top: 5px; padding-top: 3px;">
-                        <small class="text-muted">For OM PHARMA (Stamp / Signature)</small>
-                    </div>
+                {{-- UPDATED: This whole 'col-7' div has been replaced --}}
+                <div class="col-7">
+                    <table class="table table-sm table-bordered">
+                        <thead class="text-center">
+                            <tr>
+                                <th>GST%</th>
+                                <th>Taxable Value</th>
+                                <th>CGST</th>
+                                <th>SGST</th>
+                                <th>Total Tax</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-center">
+                            @foreach($gstSummary as $rate => $summary)
+                            <tr>
+                                <td>{{ $rate }}%</td>
+                                <td>{{ number_format($summary['taxable_value'], 2) }}</td>
+                                <td>{{ number_format($summary['cgst'], 2) }}</td>
+                                <td>{{ number_format($summary['sgst'], 2) }}</td>
+                                <td>{{ number_format($summary['total_gst'], 2) }}</td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
                 </div>
-                <div class="col-6">
+                <div class="col-5">
                     <table class="table table-sm w-100 mb-0">
                         <tbody>
-                            <tr><td class="text-end border-0 w-75">Total Discount</td><td class="text-end border-0">₹{{ number_format($totalDiscount, 2) }}</td></tr>
-                            <tr><td class="text-end border-0">Subtotal (w/o GST)</td><td class="text-end border-0">₹{{ number_format($subtotal, 2) }}</td></tr>
-                            <tr><td class="text-end border-0">CGST</td><td class="text-end border-0">₹{{ number_format($cgst, 2) }}</td></tr>
-                            <tr><td class="text-end border-0">SGST</td><td class="text-end border-0">₹{{ number_format($sgst, 2) }}</td></tr>
-                            <tr><td class="text-end border-0">Round Off</td><td class="text-end border-0">₹{{ number_format($roundOff, 2) }}</td></tr>
-                            <tr class="table-light border-top border-2 border-dark">
-                                <td class="text-end fw-bold">Grand Total</td>
-                                <td class="text-end fw-bold">₹{{ number_format($roundedTotal, 2) }}</td>
+                            <tr><td class="text-end border-0 w-75">Total Discount</td><td class="text-end border-0">{{ number_format($totalDiscount, 2) }}</td></tr>
+                            <tr><td class="text-end border-0">Subtotal (w/o GST)</td><td class="text-end border-0">{{ number_format($subtotal, 2) }}</td></tr>
+                            <tr><td class="text-end border-0">CGST</td><td class="text-end border-0">{{ number_format($cgst, 2) }}</td></tr>
+                            <tr><td class="text-end border-0">SGST</td><td class="text-end border-0">{{ number_format($sgst, 2) }}</td></tr>
+                            <tr><td class="text-end border-0">Round Off</td><td class="text-end border-0">{{ number_format($roundOff, 2) }}</td></tr>
+                            <tr class="table-light">
+                                <td class="text-end fw-bold border-top border-2 border-dark">Grand Total</td>
+                                <td class="text-end fw-bold border-top border-2 border-dark">{{ number_format($roundedTotal, 2) }}</td>
                             </tr>
                         </tbody>
                     </table>

@@ -20,7 +20,6 @@ class DatabaseSeeder extends Seeder
             'email' => 'test@example.com',
         ]);
 
-        // Call the new seeder
-        $this->call(DummyDataSeeder::class);
+
     }
 }

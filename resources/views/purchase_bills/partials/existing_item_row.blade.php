@@ -15,7 +15,7 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label">Batch Number:</label>
-                <input type="text" class="form-control" name="existing_items[{{ $item->id }}][batch_number]" value="{{ $item->batch_number }}" required>
+                <input type="text" class="form-control" name="existing_items[{{ $item->id }}][batch_number]" value="{{ $item->batch_number }}" >
             </div>
             <div class="col-md-3">
                 <label class="form-label">Expiry Date:</label>
@@ -28,6 +28,7 @@
             <div class="col"><label class="form-label">MRP:</label><input type="number" class="form-control" name="existing_items[{{ $item->id }}][ptr]" value="{{ $item->ptr }}"></div>
             <div class="col"><label class="form-label">Selling Price:</label><input type="number" class="form-control" name="existing_items[{{ $item->id }}][sale_price]" value="{{ $item->sale_price }}" required></div>
             <div class="col"><label class="form-label">Discount %:</label><input type="number" class="form-control item-calc" name="existing_items[{{ $item->id }}][discount_percentage]" value="{{ $item->discount_percentage }}"></div>
+            <div class="col"><label class="form-label">Our Disc%:</label><input type="number" class="form-control item-calc" name="existing_items[{{ $id }}][our_discount_percentage]" value="{{ $itemData['our_discount_percentage'] ?? 0 }}"></div>
             <div class="col"><label class="form-label">GST Rate %:</label><input type="number" class="form-control gst-rate item-calc" name="existing_items[{{ $item->id }}][gst_rate]" value="{{ $item->gst_rate }}"></div>
         </div>
         <div class="text-end">
