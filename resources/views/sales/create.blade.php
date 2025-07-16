@@ -4,13 +4,11 @@
 
 @push('styles')
 <style>
-    /* Add any specific styles if needed */
     .select2-container--bootstrap-5 .select2-selection {
         min-height: 38px;
         padding-top: 0.2rem;
         padding-bottom: 0.2rem;
     }
-    /* Style for invalid item rows on submit */
     .sale-item-wrapper.border-danger {
         border: 2px solid var(--bs-danger) !important;
         box-shadow: 0 0 0 0.25rem rgba(var(--bs-danger-rgb), .25) !important;
@@ -20,13 +18,11 @@
 
 @section('content')
 <div class="card-box">
-    {{-- Header --}}
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3 class="mb-0">{{ isset($sale) ? '✏️ Edit Sale' : '📝 Create New Sale' }}</h3>
         <a href="{{ route('sales.index') }}" class="btn btn-outline-secondary"><i class="fa fa-arrow-left me-1"></i> Back</a>
     </div>
 
-    {{-- Error Display --}}
     @if ($errors->any())
         <div class="alert alert-danger">
             <strong>Whoops!</strong> Please fix the following issues:
@@ -38,13 +34,12 @@
         </div>
     @endif
 
-    {{-- Sale Form --}}
     <form action="{{ isset($sale) ? route('sales.update', $sale->id) : route('sales.store') }}" method="POST">
         @csrf
         @if(isset($sale)) @method('PUT') @endif
         <input type="hidden" id="deleted_items" name="deleted_items" value="">
 
-        {{-- Customer and Date Details --}}
+        {{-- Sale Details --}}
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-light"><h5 class="card-title mb-0 text-primary"><i class="fa fa-info-circle me-1"></i>Sale Details</h5></div>
             <div class="card-body">
@@ -52,7 +47,7 @@
                     <div class="col-md-6">
                         <label for="customer_id" class="form-label fw-semibold">👤 Customer</label>
                         <select class="form-select" id="customer_id" name="customer_id" data-placeholder="Select or search customer..." required>
-                            <option></option> {{-- Placeholder for Select2 --}}
+                            <option></option>
                             @foreach ($customers as $customer)
                                 <option value="{{ $customer->id }}" {{ old('customer_id', $sale->customer_id ?? '') == $customer->id ? 'selected' : '' }}>
                                     {{ $customer->name }}
@@ -68,30 +63,32 @@
             </div>
         </div>
 
-        {{-- Sale Items Container --}}
+        {{-- Sale Items --}}
         <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
         <div id="sale_items_container" 
              data-search-url="{{ route('api.medicines.search') }}" 
-             {{-- CORRECTED: Pass the base batch URL dynamically from Blade --}}
              data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}"> 
-            
-            {{-- Populate existing items for the edit form --}}
+
             @if(isset($sale) && !old('new_sale_items') && !old('existing_sale_items'))
                 @foreach ($sale->saleItems as $item)
                     <div class="sale-item-wrapper" 
-                          data-existing-item="true"
-                          data-item-id="{{ $item->id }}"
-                          data-medicine-id="{{ $item->medicine_id }}"
-                          data-medicine-name="{{ $item->medicine->name_and_company }}"
-                          data-batch-number="{{ $item->batch_number }}"
-                          data-quantity="{{ $item->quantity }}"
-                          data-free-quantity="{{ $item->free_quantity }}"
-                          data-sale-price="{{ $item->sale_price }}"
-                          data-gst-rate="{{ $item->gst_rate }}"
-                          data-discount-percentage="{{ $item->discount_percentage }}"
-                          data-ptr="{{ $item->ptr ?? '' }}"
-                          data-pack="{{ $item->medicine?->pack ?? '' }}"> {{-- IMPORTANT: Add data-pack here, using nullsafe --}}
-                        @include('sales.partials.sale_item_row', ['item' => $item])
+                        data-existing-item="true"
+                        data-item-id="{{ $item->id }}"
+                        data-medicine-id="{{ $item->medicine_id }}"
+                        data-medicine-name="{{ $item->medicine->name_and_company }}"
+                        data-batch-number="{{ $item->batch_number }}"
+                        data-quantity="{{ $item->quantity }}"
+                        data-free-quantity="{{ $item->free_quantity }}"
+                        data-sale-price="{{ $item->sale_price }}"
+                        data-gst-rate="{{ $item->gst_rate }}"
+                        data-discount-percentage="{{ $item->discount_percentage }}"
+                        data-ptr="{{ $item->ptr ?? '' }}"
+                        data-pack="{{ $item->medicine?->pack ?? '' }}">
+                        @include('sales.partials.sale_item_row', [
+                            'item' => $item,
+                            'index' => $loop->index,
+                            'prefix' => "existing_sale_items[{$item->id}]"
+                        ])
                     </div>
                 @endforeach
             @endif
@@ -123,25 +120,27 @@
     </form>
 </div>
 
-{{-- This template is used by JavaScript to create new item rows --}}
+{{-- Template for JavaScript to clone --}}
 <template id="sale_item_template">
     <div class="sale-item-wrapper">
-        @include('sales.partials.sale_item_row', ['item' => null])
+        @include('sales.partials.sale_item_row', [
+            'item' => null,
+            'index' => '__INDEX__',
+            'prefix' => 'new_sale_items[__PREFIX__]'
+        ])
     </div>
 </template>
 @endsection
 
 @push('scripts')
 <script>
-    // Pass old input to JS for repopulation on validation error
     window.oldInput = {
         new_items: @json(old('new_sale_items')),
         existing_items: @json(old('existing_sale_items'))
     };
 </script>
-{{-- Ensure Select2 and jQuery are loaded before your custom script --}}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script> {{-- Make sure jQuery is loaded --}}
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script src="{{ asset('js/sale-items.js?v=1.5') }}"></script> {{-- Increment version for cache busting --}}
+<script src="{{ asset('js/sale-items.js?v=1.6') }}"></script>
 @endpush

@@ -1,9 +1,5 @@
-@php
-    $index = $index ?? '__INDEX__'; 
-    $prefix = isset($item) ? "existing_sale_items[{$item->id}]" : "new_sale_items[__PREFIX__]";
-@endphp
-
-<div class="card mb-3 sale-item-wrapper">
+{{-- Change this line in resources/views/sales/partials/sale_item_row.blade.php --}}
+<div class="card mb-3"> {{-- REMOVED 'sale-item-wrapper' class from this div --}}
     <div class="card-body p-3">
         @if(isset($item))
             <input type="hidden" name="{{ $prefix }}[id]" value="{{ $item->id }}">
@@ -49,7 +45,13 @@
 
         {{-- Additional row --}}
         <div class="row g-2 mt-2">
-            <div class="col-md-4"></div>
+            <div class="col-md-4">
+            <div class="col-sm-4 col-md-2">
+                <label for="pack_{{ $index }}" class="form-label">Pack</label>
+                <input type="text" id="pack_{{ $index }}" class="form-control pack-input" readonly>
+            </div>
+
+        </div>
             <div class="col-md-3">
                 <label for="mrp_{{ $index }}" class="form-label">MRP</label>
                 <input type="text" id="mrp_{{ $index }}" class="form-control mrp-input" readonly>
@@ -66,10 +68,7 @@
                 <label for="discount_{{ $index }}" class="form-label">Discount %</label>
                 <input type="number" id="discount_{{ $index }}" class="form-control discount-percentage-input item-calc" name="{{ $prefix }}[discount_percentage]" step="0.01" value="{{ old("{$prefix}.discount_percentage", isset($item) ? $item->discount_percentage : 0) }}">
             </div>
-            <div class="col-sm-4 col-md-2">
-                <label for="pack_{{ $index }}" class="form-label">Pack</label>
-                <input type="text" id="pack_{{ $index }}" class="form-control pack-input" readonly>
-            </div>
+
         </div>
 
         {{-- Hidden Fields --}}

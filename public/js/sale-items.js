@@ -357,49 +357,65 @@ function fetchBatches(medicineId, wrapper, selectedBatch = null) {
     }
 
     // Calculates and updates the subtotal, total GST, and grand total.
-    function calculateTotals() {
-        let grandSubtotal = 0;
-        let grandTotalGst = 0;
-        let hasInvalidQuantity = false;
+function calculateTotals() {
+    let subtotal = 0;
+    let totalGst = 0;
 
-        document.querySelectorAll('.sale-item-wrapper').forEach(wrapper => {
-            const medicineSelect = $(wrapper).find('.medicine-name-select');
-            const batchSelect = $(wrapper).find('.batch-number-select');
-            const quantityInput = wrapper.querySelector('.quantity-input');
+    console.log('--- Starting calculateTotals ---'); // Log start of function
 
-            const qty = parseFloat(quantityInput.value) || 0;
-            const freeQty = parseFloat(wrapper.querySelector('.free-quantity-input').value) || 0;
-            const price = parseFloat(wrapper.querySelector('.sale-price-input').value) || 0;
-            const disc = parseFloat(wrapper.querySelector('.discount-percentage-input').value) || 0;
-            const gstRate = parseFloat(wrapper.querySelector('.gst-rate-input').value) || 0;
+    $('.sale-item-wrapper').each(function (index) { // Added index for clearer logging
+        const $row = $(this);
 
-            const lineTotalBeforeDiscount = qty * price;
-            const afterDisc = lineTotalBeforeDiscount * (1 - disc / 100);
-            const gstAmount = (afterDisc * gstRate) / 100;
+        const qty = parseFloat($row.find('.quantity-input').val()) || 0;
+        const price = parseFloat($row.find('.sale-price-input').val()) || 0;
+        const discount = parseFloat($row.find('.discount-percentage-input').val()) || 0;
+        const gstRate = parseFloat($row.find('.gst-rate-input').val()) || 0;
 
-            wrapper.querySelector('.gst-amount-input').value = gstAmount.toFixed(2);
-            
-            grandSubtotal += afterDisc;
-            grandTotalGst += gstAmount;
+        console.log(`Item ${index + 1}:`); // Log item index
+        console.log(`  Quantity (qty): ${qty}`);
+        console.log(`  Price (price): ${price}`);
+        console.log(`  Discount (discount): ${discount}%`);
+        console.log(`  GST Rate (gstRate): ${gstRate}%`);
 
-            if (quantityInput.classList.contains('is-invalid')) {
-                hasInvalidQuantity = true;
-            } else if (!medicineSelect.val() || !batchSelect.val() || parseInt(quantityInput.value) < 1) {
-                hasInvalidQuantity = true;
-            }
-        });
 
-        const grandTotal = grandSubtotal + grandTotalGst;
+        // Line total before discount
+        const lineTotal = qty * price;
+        console.log(`  Line Total (qty * price): ${lineTotal}`);
 
-        document.getElementById('subtotal').textContent = grandSubtotal.toFixed(2);
-        document.getElementById('total_gst').textContent = grandTotalGst.toFixed(2);
-        document.getElementById('grand_total').textContent = grandTotal.toFixed(2);
 
-        const submitButton = saleForm.querySelector('button[type="submit"]');
-        if (submitButton) {
-            submitButton.disabled = hasInvalidQuantity || document.querySelectorAll('.sale-item-wrapper').length === 0;
-        }
-    }
+        // Discounted amount
+        const discountedAmount = lineTotal * (1 - discount / 100);
+        console.log(`  Discounted Amount: ${discountedAmount}`);
+
+
+        // GST on discounted amount
+        const gstAmount = discountedAmount * (gstRate / 100);
+        console.log(`  GST Amount for item: ${gstAmount}`);
+
+
+        // Add to running totals
+        subtotal += discountedAmount;
+        totalGst += gstAmount;
+
+        console.log(`  Running Subtotal: ${subtotal.toFixed(2)}`);
+        console.log(`  Running Total GST: ${totalGst.toFixed(2)}`);
+
+        // Update GST amount field in UI
+        $row.find('.gst-amount-input').val(gstAmount.toFixed(2));
+    });
+
+    const grandTotal = subtotal + totalGst;
+
+    // Show totals in UI
+    $('#subtotal').text(subtotal.toFixed(2));
+    $('#total_gst').text(totalGst.toFixed(2));
+    $('#grand_total').text(grandTotal.toFixed(2));
+
+    console.log(`Final Subtotal: ${subtotal.toFixed(2)}`);
+    console.log(`Final Total GST: ${totalGst.toFixed(2)}`);
+    console.log(`Final Grand Total: ${grandTotal.toFixed(2)}`);
+    console.log('--- Finished calculateTotals ---');
+}
 
     // --- Initialization ---
     addItemBtn.addEventListener('click', () => addItem());

@@ -80,8 +80,8 @@
                         <th class="text-center-column">Batch</th>
                         <th class="text-center-column">Exp</th>
                         <th class="text-center-column">Qty</th>
-                        <th class="text-end">FQ</th>
-                        <th>Rate</th>
+                        <th class="text-center-column">FQ</th>
+                        <th class="text-center-column">Rate</th>
                         <th class="text-center-column">Disc%</th>
                         <th class="text-center-column">Disc ₹</th>
                         <th class="text-center-column">GST%</th>
@@ -97,8 +97,8 @@
                             <td class="text-center-column">{{ $item->batch_number }}</td>
                             <td class="text-center-column">{{ \Carbon\Carbon::parse($item->expiry_date)->format('M Y') }}</td>
                             <td class="text-center-column">{{ $item->quantity }}</td>
-                            <td class="text-end">{{ $item->free_quantity }}</td>
-                            <td>{{ number_format($item->sale_price, 2) }}</td>
+                            <td class="text-center-column">{{ $item->free_quantity }}</td>
+                            <td class="text-center-column">{{ number_format($item->sale_price, 2) }}</td>
                             <td class="text-center-column">{{ $item->discount_percentage }}%</td>
                             <td class="text-center-column">{{ number_format(($item->quantity * $item->sale_price * $item->discount_percentage) / 100, 2) }}</td>
                             <td class="text-center-column">{{ $item->gst_rate }}%</td>
