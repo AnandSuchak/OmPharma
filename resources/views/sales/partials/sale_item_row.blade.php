@@ -1,79 +1,95 @@
-{{-- Change this line in resources/views/sales/partials/sale_item_row.blade.php --}}
-<div class="card mb-3"> {{-- REMOVED 'sale-item-wrapper' class from this div --}}
+<div class="card mb-3 sale-item">
     <div class="card-body p-3">
         @if(isset($item))
             <input type="hidden" name="{{ $prefix }}[id]" value="{{ $item->id }}">
         @endif
 
-        <div class="row g-2 align-items-end">
-            {{-- Medicine --}}
+        <div class="row g-2 align-items-end mb-3">
+            {{-- Medicine Name (for Select2 to initialize) --}}
             <div class="col-md-4">
-                <label for="medicine_{{ $index }}" class="form-label">Medicine</label>
-                <select id="medicine_{{ $index }}" class="form-select medicine-name-select" name="{{ $prefix }}[medicine_id]" required></select>
+                <label for="medicine_{{ $index }}" class="form-label">Medicine Name:</label>
+                <select id="medicine_{{ $index }}" class="form-select medicine-name-select" required>
+                    <option></option>
+                </select>
             </div>
 
-            {{-- Batch --}}
+            {{-- Pack Selector --}}
+            <div class="col-md-2 pack-selector-container">
+                <label for="pack_select_{{ $index }}" class="form-label">Pack:</label>
+                <select id="pack_select_{{ $index }}" class="form-select pack-select" name="{{ $prefix }}[medicine_id]" required>
+                    <option></option>
+                </select>
+            </div>
+
+            {{-- Batch Number --}}
             <div class="col-md-3">
-                <label for="batch_{{ $index }}" class="form-label">Batch No.</label>
-                <select id="batch_{{ $index }}" class="form-select batch-number-select" name="{{ $prefix }}[batch_number]" required></select>
+                <label for="batch_{{ $index }}" class="form-label">Batch Number:</label>
+                <select id="batch_{{ $index }}" class="form-select batch-number-select select2-batch" name="{{ $prefix }}[batch_number]" required>
+                    <option></option>
+                </select>
             </div>
 
-            {{-- Qty --}}
+            {{-- Expiry Date (Readonly) --}}
+            <div class="col-md-3">
+                <label for="expiry_date_{{ $index }}" class="form-label">Expiry Date:</label>
+                <input type="date" id="expiry_date_{{ $index }}" class="form-control expiry-date-input" name="{{ $prefix }}[expiry_date]" readonly>
+            </div>
+        </div>
+
+        <div class="row g-2 align-items-end mb-3">
+            {{-- Quantity --}}
             <div class="col-6 col-sm-2 col-md-1">
                 <label for="qty_{{ $index }}" class="form-label">Qty</label>
                 <input type="number" id="qty_{{ $index }}" class="form-control quantity-input item-calc" name="{{ $prefix }}[quantity]" value="{{ old("{$prefix}.quantity", isset($item) ? $item->quantity : 1) }}" min="1" required>
+                <small class="form-text text-muted available-quantity"></small>
             </div>
 
-            {{-- Free Qty --}}
+            {{-- Free Quantity --}}
             <div class="col-6 col-sm-2 col-md-1">
                 <label for="fq_{{ $index }}" class="form-label">FQ</label>
-                <input type="number" id="fq_{{ $index }}" class="form-control free-quantity-input" name="{{ $prefix }}[free_quantity]" value="{{ old("{$prefix}.free_quantity", isset($item) ? $item->free_quantity : 0) }}" min="0">
+                <input type="number" id="fq_{{ $index }}" class="form-control free-qty-input item-calc" name="{{ $prefix }}[free_quantity]" value="{{ old("{$prefix}.free_quantity", isset($item) ? $item->free_quantity : 0) }}" min="0">
             </div>
 
-            {{-- Price --}}
-            <div class="col-sm-4 col-md-2">
-                <label for="price_{{ $index }}" class="form-label">Price</label>
-                <input type="number" id="price_{{ $index }}" class="form-control sale-price-input item-calc" name="{{ $prefix }}[sale_price]" step="0.01" value="{{ old("{$prefix}.sale_price", isset($item) ? $item->sale_price : '') }}" required>
+            {{-- PTR (MRP Display) --}}
+            <div class="col-md-2">
+                <label for="mrp_display_{{ $index }}" class="form-label">MRP / PTR:</label>
+                <input type="text" id="mrp_display_{{ $index }}" class="form-control mrp-input" value="{{ old("{$prefix}.ptr", isset($item) ? $item->ptr : 'N/A') }}" readonly>
             </div>
 
-            {{-- Remove --}}
-            <div class="col-sm-2 col-md-1">
-                <label for="remove_{{ $index }}" class="form-label invisible d-none d-md-block">Del</label>
-                <button type="button" id="remove_{{ $index }}" class="btn btn-danger remove-item w-100" aria-label="Remove Item"><i class="fa fa-trash"></i></button>
+            {{-- Selling Price (Editable) --}}
+            <div class="col-md-2">
+                <label for="sale_price_{{ $index }}" class="form-label">Selling Price:</label>
+                <input type="number" id="sale_price_{{ $index }}" class="form-control sale-price-input item-calc" name="{{ $prefix }}[sale_price]" value="{{ old("{$prefix}.sale_price", isset($item) ? $item->sale_price : '') }}" step="0.01" min="0">
+            </div>
+
+            {{-- Discount (%) --}}
+            <div class="col-md-2">
+                <label for="discount_{{ $index }}" class="form-label">Discount (%):</label>
+                <input type="number" id="discount_{{ $index }}" class="form-control discount-percentage-input item-calc" name="{{ $prefix }}[discount_percentage]" value="{{ old("{$prefix}.discount_percentage", isset($item) ? $item->discount_percentage : 0) }}" step="0.01" min="0">
+            </div>
+
+            {{-- GST Rate (%) Display --}}
+            <div class="col-md-2">
+                <label for="gst_percent_display_{{ $index }}" class="form-label">GST Rate (%):</label>
+                <input type="text" id="gst_percent_display_{{ $index }}" class="form-control gst-percent-input" value="{{ old("{$prefix}.gst_rate", isset($item) ? $item->gst_rate : '0') }}%" readonly>
             </div>
         </div>
 
-        {{-- Additional row --}}
-        <div class="row g-2 mt-2">
-            <div class="col-md-4">
-            <div class="col-sm-4 col-md-2">
-                <label for="pack_{{ $index }}" class="form-label">Pack</label>
-                <input type="text" id="pack_{{ $index }}" class="form-control pack-input" readonly>
-            </div>
-
-        </div>
+        <div class="row g-2 align-items-end">
+            {{-- GST Amount (Display) --}}
             <div class="col-md-3">
-                <label for="mrp_{{ $index }}" class="form-label">MRP</label>
-                <input type="text" id="mrp_{{ $index }}" class="form-control mrp-input" readonly>
+                <label for="gst_amount_display_{{ $index }}" class="form-label">GST Amount (₹):</label>
+                <input type="text" id="gst_amount_display_{{ $index }}" class="form-control gst-amount-input" readonly>
             </div>
-            <div class="col-6 col-sm-2 col-md-1">
-                <label for="gst_percent_{{ $index }}" class="form-label">GST %</label>
-                <input type="text" id="gst_percent_{{ $index }}" class="form-control gst-percent-input" readonly>
-            </div>
-            <div class="col-6 col-sm-2 col-md-2">
-                <label for="gst_amount_{{ $index }}" class="form-label">GST Amt.</label>
-                <input type="text" id="gst_amount_{{ $index }}" class="form-control gst-amount-input" readonly>
-            </div>
-            <div class="col-sm-4 col-md-2">
-                <label for="discount_{{ $index }}" class="form-label">Discount %</label>
-                <input type="number" id="discount_{{ $index }}" class="form-control discount-percentage-input item-calc" name="{{ $prefix }}[discount_percentage]" step="0.01" value="{{ old("{$prefix}.discount_percentage", isset($item) ? $item->discount_percentage : 0) }}">
-            </div>
-
         </div>
 
-        {{-- Hidden Fields --}}
-        <input type="hidden" class="gst-rate-input item-calc" name="{{ $prefix }}[gst_rate]" value="{{ old("{$prefix}.gst_rate", isset($item) ? $item->gst_rate : 0) }}">
-        <input type="hidden" class="expiry-date-input" name="{{ $prefix }}[expiry_date]" value="{{ old("{$prefix}.expiry_date", isset($item) ? $item->expiry_date : '') }}">
+        {{-- Hidden Fields (ensure names match your controller validation) --}}
+        <input type="hidden" class="gst-rate-input" name="{{ $prefix }}[gst_rate]" value="{{ old("{$prefix}.gst_rate", isset($item) ? $item->gst_rate : 0) }}">
         <input type="hidden" class="mrp-input-hidden" name="{{ $prefix }}[ptr]" value="{{ old("{$prefix}.ptr", isset($item) ? $item->ptr : '') }}">
+        <input type="hidden" class="pack-input" name="{{ $prefix }}[pack]" value="{{ old("{$prefix}.pack", isset($item) ? $item->pack : '') }}">
+
+    </div>
+    <div class="card-footer text-end">
+        <button type="button" class="btn btn-danger remove-new-item">Remove</button>
     </div>
 </div>

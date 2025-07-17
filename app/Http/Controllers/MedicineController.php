@@ -17,7 +17,7 @@ class MedicineController extends Controller
      */
     public function index(): View
     {
-        $medicines =Medicine::withoutTrashed()->orderByDesc('id')->get();
+           $medicines = Medicine::withoutTrashed()->orderByDesc('id')->paginate(10); 
         return view('medicines.index', compact('medicines'));
     }
 

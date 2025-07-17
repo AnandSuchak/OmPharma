@@ -69,5 +69,9 @@
             </table>
         </div>
     </div>
+        {{-- Add Pagination Links Below the Table --}}
+    <div class="d-flex justify-content-center mt-4">
+        {{ $medicines->links() }}
+    </div>
 </div>
 @endsection

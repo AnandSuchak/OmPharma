@@ -71,6 +71,10 @@
                             </button>
                         </div>
                         <div class="row g-2">
+                                <div class="col-12">
+                            <label for="extra_discount_amount" class="form-label small">Extra Discount (₹)</label>
+                            <input type="number" step="0.01" class="form-control" id="extra_discount_amount" name="extra_discount_amount" value="{{ old('extra_discount_amount', $purchaseBill->extra_discount_amount ?? 0) }}">
+                        </div>
                             <div class="col-12">
                                 <label for="subtotal_amount" class="form-label small">Subtotal (w/o GST)</label>
                                 <input type="number" step="0.01" class="form-control" id="subtotal_amount" name="subtotal_amount" value="{{ old('subtotal_amount') }}" readonly>
@@ -117,7 +121,7 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Expiry Date:</label>
-                    <input type="date" class="form-control expiry-date" name="purchase_items[__INDEX__][expiry_date]" >
+                    <input type="text" class="form-control expiry-date" name="purchase_items[__INDEX__][expiry_date]" placeholder="MM/YY" pattern="^(0[1-9]|1[0-2])\/\d{2}$">
                 </div>
             </div>
             <div class="row mb-2">
@@ -133,6 +137,11 @@
                 <!-- END: This is the new field you need to add -->
                 
                 <div class="col"><label class="form-label">GST%:</label><input type="number" class="form-control item-calc gst-rate" name="purchase_items[__INDEX__][gst_rate]" step="0.01" min="0" readonly></div>
+                <div class="col">
+    <label class="form-label">Row Total (₹):</label>
+    <input type="text" class="form-control row-total" readonly>
+</div>
+
             </div>
             <div class="text-end">
                 <button type="button" class="btn btn-danger btn-sm remove-item"><i class="fa fa-trash"></i> Remove</button>

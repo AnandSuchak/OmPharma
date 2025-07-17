@@ -20,7 +20,7 @@ class PurchaseBill extends Model
         'total_amount',
         'total_gst_amount',
         'notes',
-    ];
+        'extra_discount_amount',    ];
        protected $casts = [
         'bill_date' => 'date', // Add this line
     ];

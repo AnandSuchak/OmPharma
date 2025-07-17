@@ -289,7 +289,7 @@ private function generateBillNumber(): string
 {
     do {
         $latestId = Sale::withTrashed()->max('id') ?? 0;
-        $billNumber = 'INV-' . str_pad($latestId + 1, 5, '0', STR_PAD_LEFT);
+        $billNumber = 'CASH-' . str_pad($latestId + 1, 5, '0', STR_PAD_LEFT);
     } while (
         Sale::withTrashed()->where('bill_number', $billNumber)->exists()
     );

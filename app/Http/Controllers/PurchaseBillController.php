@@ -34,51 +34,59 @@ class PurchaseBillController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
-    {
-        $this->validatePurchaseBill($request);
-        $this->validateItems($request, 'purchase_items');
+public function store(Request $request): RedirectResponse
+{
+    $this->validatePurchaseBill($request);
+    $this->validateItems($request, 'purchase_items');
 
-        DB::beginTransaction();
+    DB::beginTransaction();
 
-        try {
-            // --- Calculate totals on the backend for security ---
- $subtotal = 0;
+    try {
+        $items = $request->purchase_items;
+
+        foreach ($items as &$itemData) {
+            $itemData['free_quantity'] = $itemData['free_quantity'] ?? 0;
+        }
+        unset($itemData);
+
+        // Calculate totals
+        $subtotal = 0;
         $totalGst = 0;
-        foreach ($request->purchase_items as $itemData) {
-            // ** UPDATED CALCULATION **
+        foreach ($items as $itemData) {
             $itemSubtotal = ($itemData['quantity'] * $itemData['purchase_price']) * (1 - (($itemData['our_discount_percentage'] ?? 0) / 100));
             $itemGst = $itemSubtotal * (($itemData['gst_rate'] ?? 0) / 100);
             $subtotal += $itemSubtotal;
             $totalGst += $itemGst;
         }
+$extraDiscount = floatval($request->input('extra_discount_amount', 0));
+$subtotal = max($subtotal - $extraDiscount, 0);
 
-            $billData = $request->except('purchase_items');
-            $billData['total_gst_amount'] = $totalGst;
-            $billData['total_amount'] = $subtotal + $totalGst;
+$billData = $request->except('purchase_items');
+$billData['extra_discount_amount'] = $extraDiscount;
+$billData['total_gst_amount'] = $totalGst;
+$billData['total_amount'] = $subtotal + $totalGst;
 
-            $purchaseBill = PurchaseBill::create($billData);
+        $purchaseBill = PurchaseBill::create($billData);
 
-            // Loop through items, create them, and update inventory
-            foreach ($request->purchase_items as $itemData) {
-                $purchaseBill->purchaseBillItems()->create($itemData);
-                $this->adjustInventory(
-                    $itemData['medicine_id'],
-                    $itemData['batch_number'],
-                    $itemData['expiry_date'],
-                    $itemData['quantity'],
-                     $itemData['free_quantity'] ?? 0
-                );
-            }
-
-            DB::commit();
-            return redirect()->route('purchase_bills.index')->with('success', 'Purchase bill created and inventory updated.');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
+        foreach ($items as $itemData) {
+            $purchaseBill->purchaseBillItems()->create($itemData);
+            $this->adjustInventory(
+                $itemData['medicine_id'],
+                $itemData['batch_number'],
+                $itemData['expiry_date'],
+                $itemData['quantity'],
+                $itemData['free_quantity']
+            );
         }
+
+        DB::commit();
+        return redirect()->route('purchase_bills.index')->with('success', 'Purchase bill created and inventory updated.');
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
     }
+}
+
 
     public function show(PurchaseBill $purchaseBill): View
     {
@@ -96,76 +104,85 @@ class PurchaseBillController extends Controller
         ]);
     }
 
-    public function update(Request $request, PurchaseBill $purchaseBill): RedirectResponse
-    {
-        $this->validatePurchaseBill($request, $purchaseBill);
+public function update(Request $request, PurchaseBill $purchaseBill): RedirectResponse
+{
+    $this->validatePurchaseBill($request, $purchaseBill);
 
-        if ($request->has('existing_items')) {
-            $this->validateItems($request, 'existing_items');
+    $existingItems = $request->input('existing_items', []);
+    $newItems = $request->input('new_purchase_items', []);
+
+    if (!empty($existingItems)) {
+        $this->validateItems($request, 'existing_items');
+    }
+    if (!empty($newItems)) {
+        $this->validateItems($request, 'new_purchase_items');
+    }
+
+    DB::beginTransaction();
+
+    try {
+        // Rollback inventory for original items
+        $originalItems = $purchaseBill->purchaseBillItems()->get();
+        foreach ($originalItems as $item) {
+            $this->adjustInventory($item->medicine_id, $item->batch_number, $item->expiry_date, -$item->quantity, -$item->free_quantity);
         }
-        if ($request->has('new_purchase_items')) {
-            $this->validateItems($request, 'new_purchase_items');
+
+        // Delete removed items
+        $existingItemIds = Arr::pluck($existingItems, 'id');
+        foreach ($originalItems as $item) {
+            if (!in_array($item->id, $existingItemIds)) {
+                $item->delete();
+            }
         }
 
-        DB::beginTransaction();
-
-        try {
-            $originalItems = $purchaseBill->purchaseBillItems()->get();
-
-            foreach ($originalItems as $item) {
-                $this->adjustInventory($item->medicine_id, $item->batch_number, $item->expiry_date, -$item->quantity , -$item->free_quantity);
+        // Update existing items
+        foreach ($existingItems as &$itemData) {
+            $itemData['free_quantity'] = $itemData['free_quantity'] ?? 0;
+            $itemToUpdate = PurchaseBillItem::find($itemData['id']);
+            if ($itemToUpdate) {
+                $itemToUpdate->update(Arr::except($itemData, 'id'));
+                $this->adjustInventory($itemData['medicine_id'], $itemData['batch_number'], $itemData['expiry_date'], $itemData['quantity'], $itemData['free_quantity']);
             }
+        }
+        unset($itemData);
 
-            $existingItemIds = Arr::pluck($request->input('existing_items', []), 'id');
+        // Add new items
+        foreach ($newItems as &$itemData) {
+            $itemData['free_quantity'] = $itemData['free_quantity'] ?? 0;
+            $newItem = $purchaseBill->purchaseBillItems()->create($itemData);
+            $this->adjustInventory($newItem->medicine_id, $newItem->batch_number, $newItem->expiry_date, $newItem->quantity, $newItem->free_quantity);
+        }
+        unset($itemData);
 
-            foreach ($originalItems as $item) {
-                if (!in_array($item->id, $existingItemIds)) {
-                    $item->delete();
-                }
-            }
+        // Combine all items for total calculation
+        $allItemsData = array_merge(array_values($existingItems), $newItems);
 
-            if ($request->has('existing_items')) {
-                foreach ($request->existing_items as $itemData) {
-                    $itemToUpdate = PurchaseBillItem::find($itemData['id']);
-                    if ($itemToUpdate) {
-                        $itemToUpdate->update(Arr::except($itemData, 'id'));
-                        $this->adjustInventory($itemData['medicine_id'], $itemData['batch_number'], $itemData['expiry_date'], $itemData['quantity'] , $itemData['free_quantity'] ?? 0);
-                    }
-                }
-            }
-
-            if ($request->has('new_purchase_items')) {
-                foreach ($request->new_purchase_items as $itemData) {
-                    $newItem = $purchaseBill->purchaseBillItems()->create($itemData);
-                    $this->adjustInventory($newItem->medicine_id, $newItem->batch_number, $newItem->expiry_date, $newItem->quantity, $newItem->free_quantity ?? 0);
-                }
-            }
-
-  $subtotal = 0;
+        $subtotal = 0;
         $totalGst = 0;
-        $allItemsData = array_merge(array_values($request->input('existing_items', [])), $request->input('new_purchase_items', []));
-
         foreach ($allItemsData as $itemData) {
-            // ** UPDATED CALCULATION **
             $itemSubtotal = ($itemData['quantity'] * $itemData['purchase_price']) * (1 - (($itemData['our_discount_percentage'] ?? 0) / 100));
             $itemGst = $itemSubtotal * (($itemData['gst_rate'] ?? 0) / 100);
             $subtotal += $itemSubtotal;
             $totalGst += $itemGst;
         }
+$extraDiscount = floatval($request->input('extra_discount_amount', 0));
+$subtotal = max($subtotal - $extraDiscount, 0);
 
-            $billData = $request->except(['existing_items', 'new_purchase_items', '_token', '_method']);
-            $billData['total_gst_amount'] = $totalGst;
-            $billData['total_amount'] = $subtotal + $totalGst;
-            $purchaseBill->update($billData);
+$billData = $request->except(['existing_items', 'new_purchase_items', '_token', '_method']);
+$billData['extra_discount_amount'] = $extraDiscount;
+$billData['total_gst_amount'] = $totalGst;
+$billData['total_amount'] = $subtotal + $totalGst;
 
-            DB::commit();
-            return redirect()->route('purchase_bills.index')->with('success', 'Purchase bill updated successfully.');
+        $purchaseBill->update($billData);
 
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->withInput()->withErrors(['error' => 'Update error: ' . $e->getMessage()]);
-        }
+        DB::commit();
+        return redirect()->route('purchase_bills.index')->with('success', 'Purchase bill updated successfully.');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->withInput()->withErrors(['error' => 'Update error: ' . $e->getMessage()]);
     }
+}
 
     public function destroy(PurchaseBill $purchaseBill): RedirectResponse
     {
@@ -207,31 +224,37 @@ class PurchaseBillController extends Controller
         ]);
     }
 
-    private function validateItems(Request $request, string $key): void
-    {
-        $rules = [
-            "$key"                      => 'required|array|min:1',
-            "$key.*.medicine_id"        => 'required|exists:medicines,id',
-            "$key.*.batch_number"       => 'nullable|string|max:255',
-            "$key.*.expiry_date"        => 'nullable|date|after_or_equal:today',
-            "$key.*.quantity"           => 'required|integer|min:1',
-            "$key.*.free_quantity"         => 'nullable|integer|min:0',
-            "$key.*.purchase_price"     => 'required|numeric|min:0',
-            "$key.*.ptr"                => 'nullable|numeric|min:0',
-            "$key.*.sale_price"         => 'required|numeric|min:0',
-            "$key.*.gst_rate"           => 'nullable|numeric|min:0|max:100',
-            "$key.*.discount_percentage"=> 'nullable|numeric|min:0|max:100',
-             "$key.*.our_discount_percentage" => 'nullable|numeric|min:0|max:100',
-        ];
+private function validateItems(Request $request, string $key): void
+{
+    $rules = [
+        "$key"                       => 'required|array|min:1',
+        "$key.*.medicine_id"        => 'required|exists:medicines,id',
+        "$key.*.batch_number"       => 'nullable|string|max:255',
+        "$key.*.expiry_date"        => ['nullable', 'date'],
+        "$key.*.quantity"           => 'required|integer|min:1',
+        "$key.*.free_quantity"      => 'nullable|integer|min:0',
+        "$key.*.purchase_price"     => 'required|numeric|min:0',
+        "$key.*.ptr"                => 'nullable|numeric|min:0',
+        "$key.*.sale_price"         => 'required|numeric|min:0',
+        "$key.*.gst_rate"           => 'nullable|numeric|min:0|max:100',
+        "$key.*.discount_percentage"=> 'nullable|numeric|min:0|max:100',
+        "$key.*.our_discount_percentage" => 'nullable|numeric|min:0|max:100',
+    ];
 
-        if ($key === 'existing_items') {
-            $rules["$key.*.id"] = 'required|exists:purchase_bill_items,id';
-        }
-
-        $request->validate($rules, [
-            "$key.required" => 'You must add at least one item to the bill.'
-        ]);
+    // ✅ Only apply "after_or_equal:today" to NEW items
+    if ($key === 'new_purchase_items') {
+        $rules["$key.*.expiry_date"][] = 'after_or_equal:today';
     }
+
+    // For existing, also validate ID
+    if ($key === 'existing_items') {
+        $rules["$key.*.id"] = 'required|exists:purchase_bill_items,id';
+    }
+
+    $request->validate($rules, [
+        "$key.required" => 'You must add at least one item to the bill.'
+    ]);
+}
 
     private function adjustInventory(?int $medicineId, ?string $batchNumber, ?string $expiryDate, int $paidQuantity, int $freeQuantity = 0): void
     {
