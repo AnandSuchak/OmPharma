@@ -171,6 +171,42 @@ class MedicineController extends Controller
         return response()->json($results);
     }
 
+     /**
+     * NEW API endpoint to search medicines with available stock by name and company.
+     * This will be used by the Sales Bill medicine selection.
+     */
+    public function searchWithQty(Request $request)
+    {
+        $query = $request->input('q');
+
+        $medicines = Medicine::query()
+            ->join('inventories as i', 'medicines.id', '=', 'i.medicine_id')
+            ->where('i.quantity', '>', 0)
+            ->whereNull('i.deleted_at')
+            ->where(function($q) use ($query) {
+                $q->where('medicines.name', 'like', "%{$query}%")
+                  ->orWhere('medicines.company_name', 'like', "%{$query}%");
+            })
+            ->select('medicines.id', 'medicines.name', 'medicines.company_name', 'medicines.pack')
+            ->distinct('medicines.id')
+            ->limit(20)
+            ->get();
+
+        $results = $medicines->map(function ($item) {
+            $companyName = $item->company_name ?? 'Generic';
+            $packDisplay = $item->pack ? " - {$item->pack}" : '';
+            
+            return [
+                'id' => $item->id,
+                'text' => "{$item->name} ({$companyName}){$packDisplay}",
+                'pack' => $item->pack
+            ];
+        });
+
+        return response()->json($results);
+    }
+
+
     /**
      * Search for unique medicine names and companies.
      * This seems to be primarily used by the Purchase Bill flow if it has a 'pack selection' step.
@@ -218,6 +254,7 @@ class MedicineController extends Controller
         return response()->json($packs);
     }
 
+    
     /**
      * Get details for a specific medicine.
      */

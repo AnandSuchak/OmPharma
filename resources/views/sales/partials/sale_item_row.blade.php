@@ -8,9 +8,12 @@
             {{-- Medicine Name (for Select2 to initialize) --}}
             <div class="col-md-4">
                 <label for="medicine_{{ $index }}" class="form-label">Medicine Name:</label>
+                
                 <select id="medicine_{{ $index }}" class="form-select medicine-name-select" required>
                     <option></option>
                 </select>
+                <input type="hidden" class="medicine-id-input" name="{{ $prefix }}[medicine_id]" value="{{ old("{$prefix}.medicine_id", isset($item) ? $item->medicine_id : '') }}">
+
             </div>
 
             {{-- Pack Selector --}}
@@ -40,7 +43,7 @@
             {{-- Quantity --}}
             <div class="col-6 col-sm-2 col-md-1">
                 <label for="qty_{{ $index }}" class="form-label">Qty</label>
-                <input type="number" id="qty_{{ $index }}" class="form-control quantity-input item-calc" name="{{ $prefix }}[quantity]" value="{{ old("{$prefix}.quantity", isset($item) ? $item->quantity : 1) }}" min="1" required>
+                <input type="number" id="qty_{{ $index }}" class="form-control quantity-input item-calc" name="{{ $prefix }}[quantity]" value="{{ old("{$prefix}.quantity", isset($item) ? $item->quantity : 0) }}" min="0" required>
                 <small class="form-text text-muted available-quantity"></small>
             </div>
 
@@ -80,6 +83,22 @@
             <div class="col-md-3">
                 <label for="gst_amount_display_{{ $index }}" class="form-label">GST Amount (₹):</label>
                 <input type="text" id="gst_amount_display_{{ $index }}" class="form-control gst-amount-input" readonly>
+            </div>
+
+            {{-- New: Extra Discount Checkbox --}}
+            <div class="col-md-4 align-self-end mb-2">
+                <div class="form-check">
+                    <input class="form-check-input extra-discount-checkbox" type="checkbox" id="extra_disc_{{ $index }}"
+                           name="{{ $prefix }}[is_extra_discount_applied]"
+                           value="1" {{ old("{$prefix}.is_extra_discount_applied", isset($item) && $item->is_extra_discount_applied) ? 'checked' : '' }}>
+                    <label class="form-check-label" for="extra_disc_{{ $index }}">
+                        Apply Extra 3% Discount
+                    </label>
+                    {{-- Hidden input to store the actual applied percentage --}}
+                    <input type="hidden" class="applied-extra-discount-percentage"
+                           name="{{ $prefix }}[applied_extra_discount_percentage]"
+                           value="{{ old("{$prefix}.applied_extra_discount_percentage", isset($item) ? $item->applied_extra_discount_percentage : 0.00) }}">
+                </div>
             </div>
         </div>
 

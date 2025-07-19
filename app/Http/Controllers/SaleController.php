@@ -31,48 +31,47 @@ class SaleController extends Controller
         ]);
     }
 
-    public function store(Request $request)
-    {
-        // First, validate the main sale data and the new items (min:1 is enforced here by default)
-        $this->validateSale($request, 'new_sale_items');
+public function store(Request $request)
+{
+    // Validate the main sale data and the new items
+    $this->validateSale($request, 'new_sale_items');
 
-        DB::beginTransaction();
-        try {
-            // Generate bill number (custom logic, adjust as needed)
-            $lastSale = Sale::orderBy('id', 'desc')->first();
-            $nextNumber = $lastSale ? ($lastSale->id + 1) : 1;
-            $billNumber = 'INV-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+    DB::beginTransaction();
+    try {
+        // Generate bill number
+        $lastSale = Sale::orderBy('id', 'desc')->first();
+        $nextNumber = $lastSale ? ($lastSale->id + 1) : 1;
+        $billNumber = 'INV-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
 
-            // Calculate totals for the new sale items
-            $totals = $this->calculateTotals($request->new_sale_items);
+        // Calculate totals for the new sale items (with extra discount handling)
+        $totals = $this->calculateTotals($request->new_sale_items);
 
-            // Create the Sale
-            $sale = Sale::create([
-                'customer_id' => $request->customer_id,
-                'customer_name' => optional(Customer::find($request->customer_id))->name,
-                'sale_date' => $request->sale_date,
-                'bill_number' => $billNumber,
-                'notes' => $request->notes,
-                'total_amount' => $totals['total'], // Set total amount
-                'total_gst_amount' => $totals['gst'], // Set total GST amount
-            ]);
+        // Create the Sale
+        $sale = Sale::create([
+            'customer_id' => $request->customer_id,
+            'customer_name' => optional(Customer::find($request->customer_id))->name,
+            'sale_date' => $request->sale_date,
+            'bill_number' => $billNumber,
+            'notes' => $request->notes,
+            'total_amount' => $totals['total'],
+            'total_gst_amount' => $totals['gst'],
+        ]);
 
-            // Process and save sale items, adjusting inventory
-            foreach ($request->new_sale_items as $itemData) {
-                // Ensure correct total quantity for inventory adjustment
-                $totalQty = ($itemData['quantity'] ?? 0) + ($itemData['free_quantity'] ?? 0);
-                $this->adjustInventory($itemData, -$totalQty); // Decrease inventory by total sold quantity
+        // Save sale items and adjust inventory
+        foreach ($request->new_sale_items as $itemData) {
+            $totalQty = ($itemData['quantity'] ?? 0) + ($itemData['free_quantity'] ?? 0);
+            $this->adjustInventory($itemData, -$totalQty);
 
-                $sale->saleItems()->create($itemData);
-            }
-
-            DB::commit();
-            return redirect()->route('sales.index')->with('success', 'Sale created successfully.');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->withErrors(['Sale creation failed: ' . $e->getMessage()])->withInput();
+            $sale->saleItems()->create($itemData);
         }
+
+        DB::commit();
+        return redirect()->route('sales.index')->with('success', 'Sale created successfully.');
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->withErrors(['Sale creation failed: ' . $e->getMessage()])->withInput();
     }
+}
 
 
     public function print($id)
@@ -87,72 +86,61 @@ class SaleController extends Controller
         return view('sales.show', compact('sale'));
     }
 
-    public function edit(Sale $sale): View
-    {
-        $sale->load('saleItems.medicine');
-        $customers = Customer::all();
-        return view('sales.create', compact('sale', 'customers'));
+public function edit(Sale $sale): View
+{
+    // Load both sale items and customer so the name is always available after validation errors
+    $sale->load('saleItems.medicine', 'customer');
+    $customers = Customer::all();
+
+    return view('sales.create', compact('sale', 'customers'));
+}
+
+public function update(Request $request, Sale $sale): RedirectResponse
+{
+    $request->validate([
+        'customer_id' => 'required|exists:customers,id',
+        'sale_date' => 'required|date',
+        'notes' => 'nullable|string',
+    ]);
+
+    $this->validateSale($request, 'existing_sale_items', true);
+    $this->validateSale($request, 'new_sale_items', true);
+
+    $deletedItemIds = array_filter(explode(',', $request->input('deleted_items', '')));
+    $remainingExistingItemsCount = $sale->saleItems()->whereNotIn('id', $deletedItemIds)->count();
+    $newItemsCount = count($request->input('new_sale_items', []));
+
+    if (($remainingExistingItemsCount + $newItemsCount) === 0) {
+        return back()->withErrors(['A sale must contain at least one item after update.'])->withInput();
     }
 
-    public function update(Request $request, Sale $sale): RedirectResponse
-    {
-        // Validate general sale details
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'sale_date' => 'required|date',
-            'notes' => 'nullable|string', // Ensure notes is also validated
+    try {
+        DB::beginTransaction();
+
+        $sale->update($request->only(['customer_id', 'sale_date', 'notes']) + [
+            'customer_name' => Customer::find($request->customer_id)?->name ?? 'Unknown',
         ]);
 
-        // Validate existing items, allowing them to be an empty array if all are removed
-        $this->validateSale($request, 'existing_sale_items', true);
+        $this->handleDeletedItems((string) $request->input('deleted_items', ''));
 
-        // Validate new items, allowing them to be an empty array if no new items are added
-        $this->validateSale($request, 'new_sale_items', true);
-
-        // Crucial check: Ensure that at least one item remains or is added
-        // The deleted_items input comes as a comma-separated string
-        $deletedItemIds = array_filter(explode(',', $request->input('deleted_items', '')));
-        
-        // Get the count of existing items AFTER considering deletions
-        $remainingExistingItemsCount = $sale->saleItems()->whereNotIn('id', $deletedItemIds)->count();
-        
-        // Get the count of new items from the request
-        $newItemsCount = count($request->input('new_sale_items', []));
-
-        if (($remainingExistingItemsCount + $newItemsCount) === 0) {
-            // This means after deletions and additions, there are no items left
-            return back()->withErrors(['A sale must contain at least one item after update.'])->withInput();
+        if ($request->has('existing_sale_items')) {
+            $this->processSaleItems($request->existing_sale_items, $sale, true);
         }
 
-        try {
-            DB::beginTransaction();
-
-            $sale->update($request->only(['customer_id', 'sale_date', 'notes']) + [
-                'customer_name' => Customer::find($request->customer_id)?->name ?? 'Unknown',
-            ]);
-            
-            // FIX: Directly call handleDeletedItems with a guaranteed string value.
-            // This ensures it's called even if the 'deleted_items' field is empty or missing.
-       $this->handleDeletedItems((string) $request->input('deleted_items', '')); // Safe even if null
-
-            if ($request->has('existing_sale_items')) {
-                $this->processSaleItems($request->existing_sale_items, $sale, true);
-            }
-
-            if ($request->has('new_sale_items')) {
-                $this->processSaleItems($request->new_sale_items, $sale, false);
-            }
-            
-            $this->updateSaleTotals($sale);
-
-            DB::commit();
-            return redirect()->route('sales.index')->with('success', 'Sale updated successfully.');
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            return back()->withInput()->withErrors(['error' => 'Sale update failed: ' . $e->getMessage()]);
+        if ($request->has('new_sale_items')) {
+            $this->processSaleItems($request->new_sale_items, $sale, false);
         }
+
+        // Recalculate totals with extra discount handling
+        $this->updateSaleTotals($sale);
+
+        DB::commit();
+        return redirect()->route('sales.index')->with('success', 'Sale updated successfully.');
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return back()->withInput()->withErrors(['error' => 'Sale update failed: ' . $e->getMessage()]);
     }
+}
 
     public function destroy(Sale $sale): RedirectResponse
     {
@@ -191,7 +179,11 @@ class SaleController extends Controller
 
     private function processSaleItems(array $items, Sale $sale, bool $isUpdate = false): void
     {
+        
         foreach ($items as $itemData) {
+                 $itemData['is_extra_discount_applied'] = isset($itemData['applied_extra_discount_percentage']) && $itemData['applied_extra_discount_percentage'] > 0 ? 1 : 0;
+        $itemData['applied_extra_discount_percentage'] = $itemData['applied_extra_discount_percentage'] ?? 0;
+
             if ($isUpdate) {
                 $item = SaleItem::findOrFail($itemData['id']);
                 $originalTotalQty = $item->quantity + $item->free_quantity;
@@ -264,14 +256,24 @@ private function calculateTotals(iterable $items): array
     $gst = 0;
 
     foreach ($items as $item) {
-        $quantity = $item['quantity'] ?? ($item->quantity ?? 0); 
+        $quantity = $item['quantity'] ?? ($item->quantity ?? 0);
         $salePrice = $item['sale_price'] ?? ($item->sale_price ?? 0);
         $discount = $item['discount_percentage'] ?? ($item->discount_percentage ?? 0);
         $gstRate = $item['gst_rate'] ?? ($item->gst_rate ?? 0);
+        $extraDiscount = $item['applied_extra_discount_percentage'] ?? ($item->applied_extra_discount_percentage ?? 0);
 
         $lineTotal = $quantity * $salePrice;
+
+        // Apply normal discount
         $discountAmount = ($lineTotal * $discount) / 100;
         $afterDiscount = $lineTotal - $discountAmount;
+
+        // Apply extra discount if present
+        if ($extraDiscount > 0) {
+            $afterDiscount -= ($afterDiscount * $extraDiscount) / 100;
+        }
+
+        // Calculate GST on the discounted price
         $gstAmount = ($afterDiscount * $gstRate) / 100;
 
         $subtotal += $afterDiscount;
@@ -283,6 +285,7 @@ private function calculateTotals(iterable $items): array
         'gst' => round($gst, 2),
     ];
 }
+
 
     
 private function generateBillNumber(): string

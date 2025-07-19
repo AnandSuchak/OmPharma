@@ -27,6 +27,8 @@ class SaleItem extends Model
         'ptr',
         'gst_rate',
         'discount_percentage',
+        'is_extra_discount_applied',        
+        'applied_extra_discount_percentage',
     ];
 
             /**
@@ -36,6 +38,8 @@ class SaleItem extends Model
      */
     protected $casts = [
         'expiry_date' => 'date',
+         'is_extra_discount_applied' => 'boolean',        // Add this
+        'applied_extra_discount_percentage' => 'decimal:2', // Add this
     ];
     
     /**

@@ -66,7 +66,7 @@
         {{-- Sale Items --}}
         <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
         <div id="sale_items_container" 
-             data-search-url="{{ route('api.medicines.search') }}" 
+             data-search-url="{{ route('api.medicines.search-with-qty')}}" 
              data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}"> 
 
             @if(isset($sale) && !old('new_sale_items') && !old('existing_sale_items'))
@@ -77,8 +77,8 @@
                         data-medicine-id="{{ $item->medicine_id }}"
                         data-medicine-name="{{ $item->medicine->name_and_company }}"
                         data-batch-number="{{ $item->batch_number }}"
-                        data-quantity="{{ $item->quantity }}"
-                        data-free-quantity="{{ $item->free_quantity }}"
+                        data-quantity="{{ $item->quantity ?? 0 }}"
+                        data-free-quantity="{{ $item->free_quantity ?? 0 }}"
                         data-sale-price="{{ $item->sale_price }}"
                         data-gst-rate="{{ $item->gst_rate }}"
                         data-discount-percentage="{{ $item->discount_percentage }}"

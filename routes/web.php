@@ -60,3 +60,6 @@ Route::get('/api/medicines/packs', [MedicineController::class, 'getPacksForName'
 Route::get('/api/medicines/{medicine}/details', [MedicineController::class, 'getDetails'])->name('api.medicines.details'); // Added name for consistency
 
 Route::get('/sales/{id}/print', [SaleController::class, 'print'])->name('sales.print');
+
+// NEW ROUTE: For searching medicines WITH AVAILABLE QUANTITY (for Sales form)
+Route::get('/api/medicines/search-with-qty', [MedicineController::class, 'searchWithQty'])->name('api.medicines.search-with-qty');
