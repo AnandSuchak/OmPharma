@@ -63,3 +63,6 @@ Route::get('/sales/{id}/print', [SaleController::class, 'print'])->name('sales.p
 
 // NEW ROUTE: For searching medicines WITH AVAILABLE QUANTITY (for Sales form)
 Route::get('/api/medicines/search-with-qty', [MedicineController::class, 'searchWithQty'])->name('api.medicines.search-with-qty');
+
+// NEW ROUTE: For fetching batches specifically for editing a sale item
+Route::get('/api/medicines/{medicine}/batches-for-edit', [MedicineController::class, 'getBatchesForEdit'])->name('api.medicines.batches-for-edit');

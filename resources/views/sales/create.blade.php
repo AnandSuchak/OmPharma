@@ -65,13 +65,15 @@
 
         {{-- Sale Items --}}
         <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
-        <div id="sale_items_container" 
-             data-search-url="{{ route('api.medicines.search-with-qty')}}" 
-             data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}"> 
+        <div id="sale_items_container"
+             data-search-url="{{ route('api.medicines.search-with-qty')}}"
+             data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}">
+             data-is-edit="{{ isset($sale) ? 'true' : 'false' }}" {{-- IMPORTANT: Dynamically set true/false --}}
+             data-sale-id="{{ $sale->id ?? '' }}"> {{-- IMPORTANT: Pass actual ID or empty string --}}
 
             @if(isset($sale) && !old('new_sale_items') && !old('existing_sale_items'))
                 @foreach ($sale->saleItems as $item)
-                    <div class="sale-item-wrapper" 
+                    <div class="sale-item-wrapper"
                         data-existing-item="true"
                         data-item-id="{{ $item->id }}"
                         data-medicine-id="{{ $item->medicine_id }}"
@@ -83,7 +85,9 @@
                         data-gst-rate="{{ $item->gst_rate }}"
                         data-discount-percentage="{{ $item->discount_percentage }}"
                         data-ptr="{{ $item->ptr ?? '' }}"
-                        data-pack="{{ $item->medicine?->pack ?? '' }}">
+                        data-pack="{{ $item->medicine?->pack ?? '' }}"
+                        data-is-extra-discount-applied="{{ $item->is_extra_discount_applied ? 'true' : 'false' }}" {{-- This is correct --}}
+                        data-applied-extra-discount-percentage="{{ $item->applied_extra_discount_percentage ?? 0.00 }}">
                         @include('sales.partials.sale_item_row', [
                             'item' => $item,
                             'index' => $loop->index,

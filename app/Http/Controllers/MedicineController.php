@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Inventory;
 use App\Models\Medicine;
 use App\Models\PurchaseBillItem;
+use App\Models\SaleItem;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -17,7 +18,7 @@ class MedicineController extends Controller
      */
     public function index(): View
     {
-           $medicines = Medicine::withoutTrashed()->orderByDesc('id')->paginate(10); 
+        $medicines = Medicine::withoutTrashed()->orderByDesc('id')->paginate(10);
         return view('medicines.index', compact('medicines'));
     }
 
@@ -105,35 +106,94 @@ class MedicineController extends Controller
 
     /**
      * API endpoint to get batches for a specific medicine.
-     * Fetches current available quantity from Inventory
-     * and pricing details from the most recent PurchaseBillItem for that batch.
-     * This method is used by the Sales Bill form.
+     * This method is now unified for both create and edit forms.
+     * Fetches current available quantity from Inventory and purchase details.
+     * Optionally fetches existing sale item data if a sale_id is provided (for edit mode).
+     *
+     * @param Request $request
+     * @param int $medicineId
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function getBatches($medicineId)
+    public function getBatches(Request $request, $medicineId)
     {
-        $batches = Inventory::query()
+        $saleId = $request->query('sale_id');
+
+        // Base query for current inventory batches
+        $inventoryBatchesQuery = Inventory::query()
             ->join('purchase_bill_items', function ($join) {
                 $join->on('inventories.medicine_id', '=', 'purchase_bill_items.medicine_id')
                      ->on('inventories.batch_number', '=', 'purchase_bill_items.batch_number');
             })
             ->where('inventories.medicine_id', $medicineId)
-            ->where('inventories.quantity', '>', 0) // Crucial: Only show batches with available stock
-            ->whereNull('purchase_bill_items.deleted_at') // Ensure purchase item is not soft-deleted
+            ->whereNull('purchase_bill_items.deleted_at')
             ->select(
                 'inventories.batch_number',
                 'inventories.expiry_date',
-                'inventories.quantity',   // IMPORTANT: This is the current available quantity from Inventory
+                'inventories.quantity', // Current inventory quantity
                 'purchase_bill_items.sale_price',
                 'purchase_bill_items.gst_rate',
                 'purchase_bill_items.ptr'
-            )
-            ->distinct() // Ensures unique batch number/expiry combinations
-            ->orderBy('inventories.expiry_date') // Order by expiry date
-            ->get();
+            );
 
-        return response()->json($batches);
+        $batches = collect();
+
+        if ($saleId) {
+            // Fetch existing sale items for this medicine and sale
+            $existingSaleItems = SaleItem::where('sale_id', $saleId)
+                ->where('medicine_id', $medicineId)
+                ->get([
+                    'batch_number',
+                    'quantity', // Quantity sold in this sale
+                    'free_quantity',
+                    'sale_price',
+                    'discount_percentage',
+                    'applied_extra_discount_percentage',
+                    'is_extra_discount_applied',
+                    'expiry_date', // Also fetch expiry_date from SaleItem
+                    'gst_rate',    // Also fetch gst_rate from SaleItem
+                    'ptr'          // Also fetch ptr from SaleItem
+                ]);
+
+            // Create a query for batches from existing sale items,
+            // ensuring we get their purchase details if available.
+            $saleItemBatchesQuery = SaleItem::query()
+                ->join('purchase_bill_items', function ($join) {
+                    $join->on('sale_items.medicine_id', '=', 'purchase_bill_items.medicine_id')
+                         ->on('sale_items.batch_number', '=', 'purchase_bill_items.batch_number');
+                })
+                ->where('sale_items.sale_id', $saleId)
+                ->where('sale_items.medicine_id', $medicineId)
+                ->whereNull('purchase_bill_items.deleted_at')
+                ->select(
+                    'sale_items.batch_number',
+                    'purchase_bill_items.expiry_date', // Use expiry from purchase bill item for consistency
+                    DB::raw('0 as quantity'), // Set current quantity to 0 as it's from a past sale item, not current inventory
+                    'purchase_bill_items.sale_price',
+                    'purchase_bill_items.gst_rate',
+                    'purchase_bill_items.ptr'
+                )
+                ->distinct();
+
+            // Union the current inventory batches with batches from existing sale items
+            // This ensures that even if a batch is out of stock, if it was part of THIS sale, it's included.
+            $batches = $inventoryBatchesQuery->union($saleItemBatchesQuery)->get();
+
+            // Now, iterate through the combined batches and attach the existing_sale_item data
+            foreach ($batches as $batch) {
+                $match = $existingSaleItems->firstWhere('batch_number', $batch->batch_number);
+                if ($match) {
+                    $batch->existing_sale_item = $match;
+                }
+            }
+
+        } else {
+            // If no saleId is provided (i.e., new sale entry), only show batches with available stock
+            $batches = $inventoryBatchesQuery->where('inventories.quantity', '>', 0)->get();
+        }
+
+        return response()->json($batches->values());
     }
-    
+
     /**
      * API endpoint to get GST rate for a specific medicine.
      */
@@ -154,24 +214,23 @@ class MedicineController extends Controller
         $medicines = Medicine::where('name', 'like', "%{$query}%")
             ->orWhere('company_name', 'like', "%{$query}%")
             ->limit(20)
-            ->get(['id', 'name', 'company_name', 'pack']); // IMPORTANT: Select 'pack' here
+            ->get(['id', 'name', 'company_name', 'pack']);
 
-        // Map the results to the format expected by Select2 (id, text) and include 'pack'
         $results = $medicines->map(function ($item) {
-            $companyName = $item->company_name ?? 'Generic'; // Pre-process for cleaner string interpolation
-            $packDisplay = $item->pack ? " - {$item->pack}" : ''; // Format pack if it exists
-            
+            $companyName = $item->company_name ?? 'Generic';
+            $packDisplay = $item->pack ? " - {$item->pack}" : '';
+
             return [
                 'id' => $item->id,
-                'text' => "{$item->name} ({$companyName}){$packDisplay}", // Formatted as "Name (Company) - Pack"
-                'pack' => $item->pack // Include the raw pack information
+                'text' => "{$item->name} ({$companyName}){$packDisplay}",
+                'pack' => $item->pack
             ];
         });
 
         return response()->json($results);
     }
 
-     /**
+    /**
      * NEW API endpoint to search medicines with available stock by name and company.
      * This will be used by the Sales Bill medicine selection.
      */
@@ -195,7 +254,7 @@ class MedicineController extends Controller
         $results = $medicines->map(function ($item) {
             $companyName = $item->company_name ?? 'Generic';
             $packDisplay = $item->pack ? " - {$item->pack}" : '';
-            
+
             return [
                 'id' => $item->id,
                 'text' => "{$item->name} ({$companyName}){$packDisplay}",
@@ -205,7 +264,6 @@ class MedicineController extends Controller
 
         return response()->json($results);
     }
-
 
     /**
      * Search for unique medicine names and companies.
@@ -254,7 +312,6 @@ class MedicineController extends Controller
         return response()->json($packs);
     }
 
-    
     /**
      * Get details for a specific medicine.
      */

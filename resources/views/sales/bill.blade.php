@@ -9,6 +9,14 @@
     // This creates pages for every 10 items
     $chunks = $sale->saleItems->chunk(10);
     $totalDiscount = $sale->saleItems->sum(fn($item) => ($item->quantity * $item->sale_price * $item->discount_percentage) / 100);
+
+    // --- NEW: Calculate Total Cash Discount ---
+    $totalCashDiscount = $sale->saleItems->sum(function($item) {
+        $baseAmount = $item->quantity * $item->sale_price;
+        $amountAfterRegularDiscount = $baseAmount - ($baseAmount * $item->discount_percentage / 100);
+        return $amountAfterRegularDiscount * $item->applied_extra_discount_percentage / 100;
+    });
+
     $subtotal = $sale->subtotal_amount ?? 0;
     $gstAmount = $sale->total_gst_amount ?? 0;
     $cgst = round($gstAmount / 2, 2);
@@ -84,6 +92,7 @@
                         <th class="text-center-column">Rate</th>
                         <th class="text-center-column">Disc%</th>
                         <th class="text-center-column">Disc ₹</th>
+                        <th class="text-center-column" style="width: 5%;">cash Disc %</th>
                         <th class="text-center-column">GST%</th>
                         <th class="text-end">Amount</th>
                     </tr>
@@ -101,6 +110,7 @@
                             <td class="text-center-column">{{ number_format($item->sale_price, 2) }}</td>
                             <td class="text-center-column">{{ $item->discount_percentage }}%</td>
                             <td class="text-center-column">{{ number_format(($item->quantity * $item->sale_price * $item->discount_percentage) / 100, 2) }}</td>
+                             <td class="text-center-column">{{ $item->applied_extra_discount_percentage }}%</td>
                             <td class="text-center-column">{{ $item->gst_rate }}%</td>
                             <td class="text-end">{{ number_format(($item->quantity * $item->sale_price) - (($item->quantity * $item->sale_price * $item->discount_percentage) / 100), 2) }}</td>
                         </tr>
@@ -108,7 +118,7 @@
 
                     @for ($i = $chunk->count(); $i < 10; $i++)
                         <tr>
-                            <td colspan="11" style="height: 24px; border: none !important;"></td>
+                            <td colspan="13" style="height: 24px; border: none !important;">&nbsp;</td>
                         </tr>
                     @endfor
                 </tbody>
@@ -148,6 +158,7 @@
                     <table class="table table-sm w-100 mb-0">
                         <tbody>
                             <tr><td class="text-end border-0 w-75">Total Discount</td><td class="text-end border-0">{{ number_format($totalDiscount, 2) }}</td></tr>
+                            <tr><td class="text-end border-0">Total Cash Discount</td><td class="text-end border-0">{{ number_format($totalCashDiscount, 2) }}</td></tr>
                             <tr><td class="text-end border-0">Subtotal (w/o GST)</td><td class="text-end border-0">{{ number_format($subtotal, 2) }}</td></tr>
                             <tr><td class="text-end border-0">CGST</td><td class="text-end border-0">{{ number_format($cgst, 2) }}</td></tr>
                             <tr><td class="text-end border-0">SGST</td><td class="text-end border-0">{{ number_format($sgst, 2) }}</td></tr>
