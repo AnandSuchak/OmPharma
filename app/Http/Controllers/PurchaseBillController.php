@@ -16,13 +16,34 @@ use Illuminate\Validation\Rule;
 
 class PurchaseBillController extends Controller
 {
-    public function index()
+ public function index(Request $request): View|\Illuminate\Http\JsonResponse
     {
-        $purchaseBills = PurchaseBill::with('supplier')
+        $query = PurchaseBill::with('supplier')
             ->withoutTrashed()
-            ->orderByDesc('id')
-            ->paginate(10);
+            ->orderByDesc('id');
 
+        // NEW: Handle search query from AJAX
+        if ($request->ajax() && $request->has('search')) {
+            $searchTerm = $request->input('search');
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('bill_number', 'like', "%{$searchTerm}%")
+                  ->orWhereHas('supplier', function($sq) use ($searchTerm) {
+                      $sq->where('name', 'like', "%{$searchTerm}%");
+                  });
+            });
+        }
+
+        $purchaseBills = $query->paginate(15);
+
+        if ($request->ajax()) {
+            // Return JSON response for AJAX requests
+            return response()->json([
+                'html' => view('purchase_bills.partials.purchase_bill_table_rows', compact('purchaseBills'))->render(),
+                'pagination' => $purchaseBills->links()->toHtml()
+            ]);
+        }
+
+        // Standard view for initial page load
         return view('purchase_bills.index', compact('purchaseBills'));
     }
 
@@ -45,26 +66,41 @@ public function store(Request $request): RedirectResponse
         $items = $request->purchase_items;
 
         foreach ($items as &$itemData) {
-            $itemData['free_quantity'] = $itemData['free_quantity'] ?? 0;
+            // MODIFIED: Ensure quantities and prices are explicitly cast to float from request input
+            $itemData['free_quantity'] = (float)($itemData['free_quantity'] ?? 0.0);
+            $itemData['quantity'] = (float)($itemData['quantity'] ?? 0.0);
+            $itemData['purchase_price'] = (float)($itemData['purchase_price'] ?? 0.0);
+            $itemData['our_discount_percentage'] = (float)($itemData['our_discount_percentage'] ?? 0.0);
+            $itemData['gst_rate'] = (float)($itemData['gst_rate'] ?? 0.0);
         }
-        unset($itemData);
+        unset($itemData); // Unset reference after loop
 
-        // Calculate totals
-        $subtotal = 0;
-        $totalGst = 0;
+        // Calculate totals (subtotal and totalGst are initial calculated values before rounding)
+        $subtotal = 0.0; // MODIFIED: Initialize as float
+        $totalGst = 0.0; // MODIFIED: Initialize as float
         foreach ($items as $itemData) {
-            $itemSubtotal = ($itemData['quantity'] * $itemData['purchase_price']) * (1 - (($itemData['our_discount_percentage'] ?? 0) / 100));
-            $itemGst = $itemSubtotal * (($itemData['gst_rate'] ?? 0) / 100);
-            $subtotal += $itemSubtotal;
+            $itemBase = $itemData['quantity'] * $itemData['purchase_price'];
+            $itemAfterDiscount = $itemBase * (1 - ($itemData['our_discount_percentage'] / 100));
+            $itemGst = $itemAfterDiscount * ($itemData['gst_rate'] / 100);
+
+            $subtotal += $itemAfterDiscount;
             $totalGst += $itemGst;
         }
-$extraDiscount = floatval($request->input('extra_discount_amount', 0));
-$subtotal = max($subtotal - $extraDiscount, 0);
 
-$billData = $request->except('purchase_items');
-$billData['extra_discount_amount'] = $extraDiscount;
-$billData['total_gst_amount'] = $totalGst;
-$billData['total_amount'] = $subtotal + $totalGst;
+        $extraDiscount = (float)($request->input('extra_discount_amount', 0.0)); // MODIFIED: Use 0.0
+        $subtotal = max($subtotal - $extraDiscount, 0.0); // MODIFIED: Use 0.0
+
+        $calculatedGrandTotal = $subtotal + $totalGst;
+
+        // MODIFIED: Rounding Off Logic for storage
+        $roundedGrandTotal = round($calculatedGrandTotal); // Round to nearest whole number
+        $roundingOffAmount = $roundedGrandTotal - $calculatedGrandTotal; // Calculate the difference
+
+        $billData = $request->except('purchase_items');
+        $billData['extra_discount_amount'] = $extraDiscount;
+        $billData['total_gst_amount'] = round($totalGst, 2); // MODIFIED: Round GST for storage
+        $billData['total_amount'] = $roundedGrandTotal; // MODIFIED: Store the rounded total
+        $billData['rounding_off_amount'] = round($roundingOffAmount, 2); // MODIFIED: Store the rounding off amount
 
         $purchaseBill = PurchaseBill::create($billData);
 
@@ -74,8 +110,8 @@ $billData['total_amount'] = $subtotal + $totalGst;
                 $itemData['medicine_id'],
                 $itemData['batch_number'],
                 $itemData['expiry_date'],
-                $itemData['quantity'],
-                $itemData['free_quantity']
+                $itemData['quantity'], // Now correctly float from above loop
+                $itemData['free_quantity'] // Now correctly float from above loop
             );
         }
 
@@ -86,7 +122,6 @@ $billData['total_amount'] = $subtotal + $totalGst;
         return back()->withInput()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
     }
 }
-
 
     public function show(PurchaseBill $purchaseBill): View
     {
@@ -124,7 +159,8 @@ public function update(Request $request, PurchaseBill $purchaseBill): RedirectRe
         // Rollback inventory for original items
         $originalItems = $purchaseBill->purchaseBillItems()->get();
         foreach ($originalItems as $item) {
-            $this->adjustInventory($item->medicine_id, $item->batch_number, $item->expiry_date, -$item->quantity, -$item->free_quantity);
+            // MODIFIED: Ensure float casts for quantities
+            $this->adjustInventory($item->medicine_id, $item->batch_number, $item->expiry_date, -(float)$item->quantity, -(float)$item->free_quantity);
         }
 
         // Delete removed items
@@ -137,7 +173,13 @@ public function update(Request $request, PurchaseBill $purchaseBill): RedirectRe
 
         // Update existing items
         foreach ($existingItems as &$itemData) {
-            $itemData['free_quantity'] = $itemData['free_quantity'] ?? 0;
+            // MODIFIED: Ensure quantities and prices are explicitly cast to float from request input
+            $itemData['free_quantity'] = (float)($itemData['free_quantity'] ?? 0.0);
+            $itemData['quantity'] = (float)($itemData['quantity'] ?? 0.0);
+            $itemData['purchase_price'] = (float)($itemData['purchase_price'] ?? 0.0);
+            $itemData['our_discount_percentage'] = (float)($itemData['our_discount_percentage'] ?? 0.0);
+            $itemData['gst_rate'] = (float)($itemData['gst_rate'] ?? 0.0);
+
             $itemToUpdate = PurchaseBillItem::find($itemData['id']);
             if ($itemToUpdate) {
                 $itemToUpdate->update(Arr::except($itemData, 'id'));
@@ -148,7 +190,13 @@ public function update(Request $request, PurchaseBill $purchaseBill): RedirectRe
 
         // Add new items
         foreach ($newItems as &$itemData) {
-            $itemData['free_quantity'] = $itemData['free_quantity'] ?? 0;
+            // MODIFIED: Ensure quantities and prices are explicitly cast to float from request input
+            $itemData['free_quantity'] = (float)($itemData['free_quantity'] ?? 0.0);
+            $itemData['quantity'] = (float)($itemData['quantity'] ?? 0.0);
+            $itemData['purchase_price'] = (float)($itemData['purchase_price'] ?? 0.0);
+            $itemData['our_discount_percentage'] = (float)($itemData['our_discount_percentage'] ?? 0.0);
+            $itemData['gst_rate'] = (float)($itemData['gst_rate'] ?? 0.0);
+
             $newItem = $purchaseBill->purchaseBillItems()->create($itemData);
             $this->adjustInventory($newItem->medicine_id, $newItem->batch_number, $newItem->expiry_date, $newItem->quantity, $newItem->free_quantity);
         }
@@ -157,21 +205,30 @@ public function update(Request $request, PurchaseBill $purchaseBill): RedirectRe
         // Combine all items for total calculation
         $allItemsData = array_merge(array_values($existingItems), $newItems);
 
-        $subtotal = 0;
-        $totalGst = 0;
+        $subtotal = 0.0; // MODIFIED: Initialize as float
+        $totalGst = 0.0; // MODIFIED: Initialize as float
         foreach ($allItemsData as $itemData) {
-            $itemSubtotal = ($itemData['quantity'] * $itemData['purchase_price']) * (1 - (($itemData['our_discount_percentage'] ?? 0) / 100));
-            $itemGst = $itemSubtotal * (($itemData['gst_rate'] ?? 0) / 100);
-            $subtotal += $itemSubtotal;
+            $itemBase = $itemData['quantity'] * $itemData['purchase_price'];
+            $itemAfterDiscount = $itemBase * (1 - ($itemData['our_discount_percentage'] / 100));
+            $itemGst = $itemAfterDiscount * ($itemData['gst_rate'] / 100);
+
+            $subtotal += $itemAfterDiscount;
             $totalGst += $itemGst;
         }
-$extraDiscount = floatval($request->input('extra_discount_amount', 0));
-$subtotal = max($subtotal - $extraDiscount, 0);
+        $extraDiscount = (float)($request->input('extra_discount_amount', 0.0)); // MODIFIED: Use 0.0
+        $subtotal = max($subtotal - $extraDiscount, 0.0); // MODIFIED: Use 0.0
 
-$billData = $request->except(['existing_items', 'new_purchase_items', '_token', '_method']);
-$billData['extra_discount_amount'] = $extraDiscount;
-$billData['total_gst_amount'] = $totalGst;
-$billData['total_amount'] = $subtotal + $totalGst;
+        $calculatedGrandTotal = $subtotal + $totalGst;
+
+        // MODIFIED: Rounding Off Logic for storage
+        $roundedGrandTotal = round($calculatedGrandTotal); // Round to nearest whole number
+        $roundingOffAmount = $roundedGrandTotal - $calculatedGrandTotal; // Calculate the difference
+
+        $billData = $request->except(['existing_items', 'new_purchase_items', '_token', '_method']);
+        $billData['extra_discount_amount'] = $extraDiscount;
+        $billData['total_gst_amount'] = round($totalGst, 2); // MODIFIED: Round GST for storage
+        $billData['total_amount'] = $roundedGrandTotal; // MODIFIED: Store the rounded total
+        $billData['rounding_off_amount'] = round($roundingOffAmount, 2); // MODIFIED: Store the rounding off amount
 
         $purchaseBill->update($billData);
 
@@ -183,13 +240,12 @@ $billData['total_amount'] = $subtotal + $totalGst;
         return back()->withInput()->withErrors(['error' => 'Update error: ' . $e->getMessage()]);
     }
 }
-
     public function destroy(PurchaseBill $purchaseBill): RedirectResponse
     {
         DB::beginTransaction();
         try {
             foreach ($purchaseBill->purchaseBillItems as $item) {
-                $this->adjustInventory($item->medicine_id, $item->batch_number, $item->expiry_date, -$item->quantity, -$item->free_quantity);
+                $this->adjustInventory($item->medicine_id, $item->batch_number, $item->expiry_date, -(float)$item->quantity, -(float)$item->free_quantity);
             }
 
             $purchaseBill->delete();
@@ -231,8 +287,8 @@ private function validateItems(Request $request, string $key): void
         "$key.*.medicine_id"        => 'required|exists:medicines,id',
         "$key.*.batch_number"       => 'nullable|string|max:255',
         "$key.*.expiry_date"        => ['nullable', 'date'],
-        "$key.*.quantity"           => 'required|integer|min:1',
-        "$key.*.free_quantity"      => 'nullable|integer|min:0',
+        "$key.*.quantity"           => 'nullable|numeric|min:0', // MODIFIED: Changed from integer to numeric, and min:1 to min:0
+        "$key.*.free_quantity"      => 'nullable|numeric|min:0',
         "$key.*.purchase_price"     => 'required|numeric|min:0',
         "$key.*.ptr"                => 'nullable|numeric|min:0',
         "$key.*.sale_price"         => 'required|numeric|min:0',
@@ -256,26 +312,27 @@ private function validateItems(Request $request, string $key): void
     ]);
 }
 
-    private function adjustInventory(?int $medicineId, ?string $batchNumber, ?string $expiryDate, int $paidQuantity, int $freeQuantity = 0): void
-    {
-        if (!$medicineId) {
-            return;
-        }
-
-        // Total change is the sum of paid and free items
-        $totalQuantityChange = $paidQuantity + $freeQuantity;
-
-        if ($totalQuantityChange == 0) {
-            return;
-        }
-
-        $inventory = Inventory::firstOrNew([
-            'medicine_id'  => $medicineId,
-            'batch_number' => $batchNumber,
-            'expiry_date'  => $expiryDate,
-        ]);
-
-        $inventory->quantity = ($inventory->quantity ?? 0) + $totalQuantityChange;
-        $inventory->save();
+   private function adjustInventory(?int $medicineId, ?string $batchNumber, ?string $expiryDate, float $paidQuantity, float $freeQuantity = 0.0): void // MODIFIED: Type hints to float
+{
+    if (!$medicineId) {
+        return;
     }
+
+    // Total change is the sum of paid and free items
+    $totalQuantityChange = $paidQuantity + $freeQuantity; // Already float due to type hints
+
+    if ($totalQuantityChange == 0.0) { // MODIFIED: Use float comparison
+        return;
+    }
+
+    $inventory = Inventory::firstOrNew([
+        'medicine_id'  => $medicineId,
+        'batch_number' => $batchNumber,
+        'expiry_date'  => $expiryDate,
+    ]);
+
+    // Ensure inventory->quantity is also treated as float/decimal
+    $inventory->quantity = (float)($inventory->quantity ?? 0.0) + $totalQuantityChange; // MODIFIED: Use 0.0 for consistency
+    $inventory->save();
+}
 }

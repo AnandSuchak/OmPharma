@@ -13,9 +13,32 @@ class SupplierController extends Controller
     /**
      * Display a listing of the suppliers.
      */
-    public function index(): View
+ public function index(Request $request): View|\Illuminate\Http\JsonResponse // MODIFIED: Added JsonResponse return type
     {
-        $suppliers = Supplier::withoutTrashed()->get();
+        $query = Supplier::latest();
+
+        // NEW: Handle search query from AJAX
+        if ($request->ajax() && $request->has('search')) {
+            $searchTerm = $request->input('search');
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('name', 'like', "%{$searchTerm}%")
+                  ->orWhere('phone_number', 'like', "%{$searchTerm}%")
+                  ->orWhere('email', 'like', "%{$searchTerm}%")
+                  ->orWhere('address', 'like', "%{$searchTerm}%");
+            });
+        }
+
+        $suppliers = $query->paginate(15);
+
+        if ($request->ajax()) {
+            // Return JSON response for AJAX requests
+            return response()->json([
+                'html' => view('suppliers.partials.supplier_table_rows', compact('suppliers'))->render(),
+                'pagination' => $suppliers->links('pagination::bootstrap-5')->render()
+
+            ]);
+        }
+
         return view('suppliers.index', compact('suppliers'));
     }
 

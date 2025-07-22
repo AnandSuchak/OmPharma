@@ -3,75 +3,106 @@
 @section('title', 'Medicines')
 
 @section('content')
-<div class="card-box">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="mb-0">💊 All Medicines</h3>
-        <a href="{{ route('medicines.create') }}" class="btn btn-primary">
-            <i class="fa fa-plus me-1"></i> Create New Medicine
-        </a>
-    </div>
-
-    @if ($message = Session::get('success'))
-        <div class="alert alert-success">
-            <i class="fa fa-check-circle me-1"></i> {{ $message }}
-        </div>
-    @endif
-
-    <div class="card shadow-sm">
-        <div class="card-body p-0">
-            <table class="table table-hover table-bordered mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>💊 Name</th>
-                        <th>🏭 Company</th>
-                        <th>📦 Pack</th>
-                        <th>💰 GST</th>
-                        <th>🧾 HSN</th>
-                        <th style="width: 180px;">⚙️ Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse ($medicines as $medicine)
-                        <tr>
-                            <td>{{ $medicine->name }}</td>
-                            <td>{{ $medicine->company_name ?? '-' }}</td>
-                            <td>{{ $medicine->pack ?? '-' }}</td>
-                            <td>
-                                @if ($medicine->gst_rate)
-                                    <span class="badge bg-success">{{ $medicine->gst_rate }}%</span>
-                                @else
-                                    <span class="text-muted">N/A</span>
-                                @endif
-                            </td>
-                            <td>{{ $medicine->hsn_code ?? '-' }}</td>
-                            <td>
-                                <a href="{{ route('medicines.show', $medicine->id) }}" class="btn btn-sm btn-outline-info me-1" title="View">
-                                    <i class="fa fa-eye"></i>
-                                </a>
-                                <a href="{{ route('medicines.edit', $medicine->id) }}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
-                                    <i class="fa fa-edit"></i>
-                                </a>
-                                <form action="{{ route('medicines.destroy', $medicine->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this medicine?')">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
-                                        <i class="fa fa-trash"></i>
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="7" class="text-center text-muted">No medicines found.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="page-title-box d-sm-flex align-items-center justify-content-between mb-3">
+                <h4 class="mb-0">💊 All Medicines</h4>
+                <div class="page-title-right">
+                    <ol class="breadcrumb m-0">
+                        <li class="breadcrumb-item"><a href="{{ url('/') }}">Dashboard</a></li>
+                        <li class="breadcrumb-item active">Medicines</li>
+                    </ol>
+                </div>
+            </div>
         </div>
     </div>
-        {{-- Add Pagination Links Below the Table --}}
-    <div class="d-flex justify-content-center mt-4">
-        {{ $medicines->links() }}
+
+    {{-- Main Card --}}
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h3 class="card-title mb-0">Medicine List</h3>
+                        <a href="{{ route('medicines.create') }}" class="btn btn-primary">
+                            <i class="fa fa-plus me-1"></i> Create New Medicine
+                        </a>
+                    </div>
+
+                    {{-- Alerts --}}
+                    @if ($message = Session::get('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            <i class="fa fa-check-circle me-1"></i> {{ $message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if ($message = Session::get('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="fa fa-exclamation-triangle me-1"></i> {{ $message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+
+                    {{-- Search --}}
+                    <div class="row mb-3 align-items-center">
+                        <div class="col-md-6 col-lg-4">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fa fa-search"></i></span>
+                                <input type="text" id="medicine-search-input" class="form-control" placeholder="Search by Name, Company, or HSN Code...">
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Table Container --}}
+                    <div id="medicines-table-container">
+                        @include('medicines.partials.medicine_table')
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+$(document).ready(function() {
+    const fetch_medicines = (url) => {
+        $.ajax({
+            url: url,
+            method: 'GET',
+            success: function(data) {
+                $('#medicines-table-container').html(data);
+            },
+            error: function(xhr) {
+                console.error("AJAX Error:", xhr.responseText);
+                alert("An error occurred while fetching medicines. Please try again.");
+            }
+        });
+    }
+
+    let debounceTimer;
+    $('#medicine-search-input').on('keyup', function() {
+        clearTimeout(debounceTimer);
+        const query = $(this).val();
+        debounceTimer = setTimeout(function() {
+            let url = "{{ route('medicines.index') }}?search=" + encodeURIComponent(query);
+            fetch_medicines(url);
+        }, 300);
+    });
+
+    $(document).on('click', '#medicines-table-container .pagination a', function(event) {
+        event.preventDefault();
+        let url = $(this).attr('href');
+        const currentSearchQuery = $('#medicine-search-input').val();
+        if (currentSearchQuery) {
+            url = new URL(url);
+            url.searchParams.set('search', currentSearchQuery);
+            url = url.toString();
+        }
+        fetch_medicines(url);
+    });
+});
+</script>
+@endpush

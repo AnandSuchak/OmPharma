@@ -10,17 +10,36 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Response; 
 
 class MedicineController extends Controller
 {
     /**
      * Display a listing of the medicines.
+     * Handles AJAX search and pagination for the index page.
      */
-    public function index(): View
-    {
-        $medicines = Medicine::withoutTrashed()->orderByDesc('id')->paginate(10);
-        return view('medicines.index', compact('medicines'));
+public function index(Request $request): View|JsonResponse|Response // Add Response to the type hint
+{
+    $query = Medicine::withoutTrashed()->orderBy('name');
+
+    if ($request->has('search')) {
+        $searchTerm = $request->input('search');
+        $query->where(function($q) use ($searchTerm) {
+            $q->where('name', 'like', "%{$searchTerm}%")
+              ->orWhere('company_name', 'like', "%{$searchTerm}%")
+              ->orWhere('hsn_code', 'like', "%{$searchTerm}%");
+        });
     }
+
+    $medicines = $query->paginate(15);
+
+    if ($request->ajax()) {
+        // Return a Response object containing the HTML string
+        return response(view('medicines.partials.medicine_table', compact('medicines'))->render());
+    }
+
+    return view('medicines.index', compact('medicines'));
+}
 
     /**
      * Show the form for creating a new medicine.
@@ -36,18 +55,19 @@ class MedicineController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $request->validate([
-            'name' => 'required',
-            'hsn_code' => 'nullable',
-            'description' => 'nullable',
-            'quantity' => 'nullable|numeric|min:0',
+            'name' => 'required|string|max:255',
+            'hsn_code' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            // 'quantity' is likely not directly stored on Medicine model, but handled by Inventory
+            // 'quantity' => 'nullable|numeric|min:0', // Removed if not directly on Medicine model
             'gst_rate' => 'nullable|numeric|min:0|max:100',
-            'pack' => 'nullable',
-            'company_name' => 'nullable',
+            'pack' => 'nullable|string|max:255',
+            'company_name' => 'nullable|string|max:255',
         ]);
 
         Medicine::create($request->all());
 
-        return redirect()->route('medicines.index')->with('success', 'Medicine created successfully.');
+        return redirect()->route('medicines.index')->with('success', 'Medicine added successfully.');
     }
 
     /**
@@ -72,13 +92,14 @@ class MedicineController extends Controller
     public function update(Request $request, Medicine $medicine): RedirectResponse
     {
         $request->validate([
-            'name' => 'required',
-            'hsn_code' => 'nullable',
-            'description' => 'nullable',
-            'quantity' => 'nullable|numeric|min:0',
+            'name' => 'required|string|max:255',
+            'hsn_code' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            // 'quantity' is likely not directly stored on Medicine model, but handled by Inventory
+            // 'quantity' => 'nullable|numeric|min:0', // Removed if not directly on Medicine model
             'gst_rate' => 'nullable|numeric|min:0|max:100',
-            'pack' => 'nullable',
-            'company_name' => 'nullable',
+            'pack' => 'nullable|string|max:255',
+            'company_name' => 'nullable|string|max:255',
         ]);
 
         $medicine->update($request->all());
@@ -91,6 +112,7 @@ class MedicineController extends Controller
      */
     public function destroy(Medicine $medicine): RedirectResponse
     {
+        // Check for related records before allowing deletion (soft delete is preferred)
         if (
             $medicine->purchaseBillItems()->exists() ||
             $medicine->inventories()->exists() ||
@@ -99,7 +121,7 @@ class MedicineController extends Controller
             return back()->withErrors(['error' => 'Cannot delete medicine that has related transactions.']);
         }
 
-        $medicine->delete();
+        $medicine->delete(); // Uses soft delete if configured on the model
 
         return redirect()->route('medicines.index')->with('success', 'Medicine deleted successfully.');
     }
@@ -125,7 +147,7 @@ class MedicineController extends Controller
                      ->on('inventories.batch_number', '=', 'purchase_bill_items.batch_number');
             })
             ->where('inventories.medicine_id', $medicineId)
-            ->whereNull('purchase_bill_items.deleted_at')
+            ->whereNull('purchase_bill_items.deleted_at') // Ensure linked purchase item is not soft deleted
             ->select(
                 'inventories.batch_number',
                 'inventories.expiry_date',
@@ -135,7 +157,7 @@ class MedicineController extends Controller
                 'purchase_bill_items.ptr'
             );
 
-        $batches = collect();
+        $batches = collect(); // Initialize an empty collection
 
         if ($saleId) {
             // Fetch existing sale items for this medicine and sale
@@ -191,7 +213,24 @@ class MedicineController extends Controller
             $batches = $inventoryBatchesQuery->where('inventories.quantity', '>', 0)->get();
         }
 
-        return response()->json($batches->values());
+        // Map the batches to ensure all quantities are floats and dates are formatted
+        $mappedBatches = $batches->map(function ($batch) {
+            return [
+                'batch_number'                => $batch->batch_number,
+                'expiry_date'                 => $batch->expiry_date ? \Carbon\Carbon::parse($batch->expiry_date)->format('Y-m-d') : null,
+                'quantity'                    => (float)$batch->quantity, // Ensure float
+                'purchase_price'              => (float)($batch->purchase_price ?? 0.0), // Use $batch directly if joined
+                'sale_price'                  => (float)($batch->sale_price ?? 0.0),    // Use $batch directly if joined
+                'ptr'                         => (float)($batch->ptr ?? 0.0),           // Use $batch directly if joined
+                'customer_discount_percentage'=> (float)($batch->discount_percentage ?? 0.0), // This might be missing from join, consider fetching from original PBI if needed
+                'our_discount_percentage'     => (float)($batch->our_discount_percentage ?? 0.0), // This might be missing from join
+                'gst'                         => (float)($batch->gst_rate ?? 0.0),      // Use $batch directly if joined
+                'existing_sale_item'          => $batch->existing_sale_item ?? null // Pass existing sale item data if present
+            ];
+        });
+
+        // Use values() to re-index the array numerically after mapping
+        return response()->json($mappedBatches->values());
     }
 
     /**
@@ -199,13 +238,13 @@ class MedicineController extends Controller
      */
     public function getGstRate(Medicine $medicine)
     {
-        return response()->json(['gst_rate' => $medicine->gst_rate]);
+        return response()->json(['gst_rate' => (float)($medicine->gst_rate ?? 0.0)]);
     }
 
     /**
      * API endpoint to search medicines by name and company.
      * This is used by the Sales Bill medicine selection,
-     * formatting results as "Medicine Name - Pack".
+     * formatting results as "Medicine Name (Company) - Pack".
      */
     public function search(Request $request)
     {
@@ -247,7 +286,7 @@ class MedicineController extends Controller
                   ->orWhere('medicines.company_name', 'like', "%{$query}%");
             })
             ->select('medicines.id', 'medicines.name', 'medicines.company_name', 'medicines.pack')
-            ->distinct('medicines.id')
+            ->distinct('medicines.id') // Ensure unique medicine entries even if multiple batches exist
             ->limit(20)
             ->get();
 
@@ -275,17 +314,18 @@ class MedicineController extends Controller
 
         $medicines = Medicine::select('id', 'name', 'company_name', 'pack')
             ->where('name', 'like', "%{$query}%")
-            ->distinct()
+            ->distinct() // Ensure unique medicine entries by name/company
             ->limit(15)
             ->get();
 
         $results = $medicines->map(function ($med) {
             $companyName = $med->company_name ?? 'Generic';
             return [
-                'id' => $med->name . '|' . ($med->company_name ?? ''), // Compound ID for generic search
+                'id' => $med->id, // Use actual medicine ID, not compound ID
                 'text' => $med->name . ' (' . ($companyName) . ')',
-                'medicine_id' => $med->id,
-                'pack' => $med->pack
+                'name' => $med->name, // Pass name for frontend use
+                'company_name' => $med->company_name, // Pass company name for frontend use
+                'pack' => $med->pack // Pass pack for frontend use
             ];
         });
 
@@ -300,6 +340,7 @@ class MedicineController extends Controller
     {
         $request->validate([
             'name' => 'required|string',
+            'company_name' => 'nullable|string', // Company name might be needed for specific pack lookup
         ]);
 
         $packs = Medicine::where('name', $request->name)

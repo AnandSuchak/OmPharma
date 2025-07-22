@@ -64,12 +64,13 @@
         </div>
 
         {{-- Sale Items --}}
-        <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
-        <div id="sale_items_container"
-             data-search-url="{{ route('api.medicines.search-with-qty')}}"
-             data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}">
-             data-is-edit="{{ isset($sale) ? 'true' : 'false' }}" {{-- IMPORTANT: Dynamically set true/false --}}
-             data-sale-id="{{ $sale->id ?? '' }}"> {{-- IMPORTANT: Pass actual ID or empty string --}}
+      <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
+<div id="sale_items_container"
+     data-search-url="{{ route('api.medicines.searchWithQty') }}"
+     data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}"
+     data-is-edit="{{ isset($sale) ? 'true' : 'false' }}"
+     data-sale-id="{{ $sale->id ?? '' }}">
+        
 
             @if(isset($sale) && !old('new_sale_items') && !old('existing_sale_items'))
                 @foreach ($sale->saleItems as $item)

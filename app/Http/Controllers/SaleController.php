@@ -19,7 +19,7 @@ class SaleController extends Controller
     {
         $sales = Sale::with('customer')
             ->latest()
-            ->paginate(10);
+            ->paginate(15);
 
         return view('sales.index', compact('sales'));
     }
@@ -59,7 +59,7 @@ public function store(Request $request)
 
         // Save sale items and adjust inventory
         foreach ($request->new_sale_items as $itemData) {
-            $totalQty = ($itemData['quantity'] ?? 0) + ($itemData['free_quantity'] ?? 0);
+            $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0); // MODIFIED: Cast to float
             $this->adjustInventory($itemData, -$totalQty);
 
             $sale->saleItems()->create($itemData);
@@ -97,6 +97,7 @@ public function edit(Sale $sale): View
 
 public function update(Request $request, Sale $sale): RedirectResponse
 {
+    // MODIFIED: Removed debugging try-catch block. Validation will now redirect on failure.
     $request->validate([
         'customer_id' => 'required|exists:customers,id',
         'sale_date' => 'required|date',
@@ -111,6 +112,7 @@ public function update(Request $request, Sale $sale): RedirectResponse
     $newItemsCount = count($request->input('new_sale_items', []));
 
     if (($remainingExistingItemsCount + $newItemsCount) === 0) {
+        // MODIFIED: Changed to redirect with errors for non-AJAX submission
         return back()->withErrors(['A sale must contain at least one item after update.'])->withInput();
     }
 
@@ -135,13 +137,14 @@ public function update(Request $request, Sale $sale): RedirectResponse
         $this->updateSaleTotals($sale);
 
         DB::commit();
+        // MODIFIED: Changed to redirect for non-AJAX submission
         return redirect()->route('sales.index')->with('success', 'Sale updated successfully.');
     } catch (\Throwable $e) {
         DB::rollBack();
+        // MODIFIED: Changed to redirect with errors for non-AJAX submission
         return back()->withInput()->withErrors(['error' => 'Sale update failed: ' . $e->getMessage()]);
     }
 }
-
     public function destroy(Sale $sale): RedirectResponse
     {
         try {
@@ -150,7 +153,7 @@ public function update(Request $request, Sale $sale): RedirectResponse
 
             foreach ($sale->saleItems as $item) {
                 // Adjust inventory back when a sale is deleted
-                $this->adjustInventory($item, $item->quantity + $item->free_quantity);
+                $this->adjustInventory($item, (float)$item->quantity + (float)$item->free_quantity); // MODIFIED: Cast to float
             }
 
             $sale->delete();
@@ -186,14 +189,14 @@ public function update(Request $request, Sale $sale): RedirectResponse
 
             if ($isUpdate) {
                 $item = SaleItem::findOrFail($itemData['id']);
-                $originalTotalQty = $item->quantity + $item->free_quantity;
-                $newTotalQty = ($itemData['quantity'] ?? 0) + ($itemData['free_quantity'] ?? 0);
+                $originalTotalQty = (float)$item->quantity + (float)$item->free_quantity; // MODIFIED: Cast to float
+                $newTotalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0); // MODIFIED: Cast to float
                 $quantityDiff = $newTotalQty - $originalTotalQty;
 
                 $this->adjustInventory($item, -$quantityDiff); // Negative diff for reduction, positive for increase
                 $item->update($itemData);
             } else {
-                $totalQty = ($itemData['quantity'] ?? 0) + ($itemData['free_quantity'] ?? 0);
+                $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0); // MODIFIED: Cast to float
                 $this->adjustInventory($itemData, -$totalQty); // Decrease inventory by total sold quantity
                 $sale->saleItems()->create($itemData);
             }
@@ -208,7 +211,7 @@ public function update(Request $request, Sale $sale): RedirectResponse
             if (empty($itemId)) continue; // Double check for robustness
             $item = SaleItem::find($itemId);
             if ($item) {
-                $this->adjustInventory($item, $item->quantity + $item->free_quantity); // Restore inventory
+                $this->adjustInventory($item, (float)$item->quantity + (float)$item->free_quantity); // MODIFIED: Cast to float
                 $item->delete();
             }
         }
@@ -224,9 +227,9 @@ public function update(Request $request, Sale $sale): RedirectResponse
         ]);
     }
     
-    private function adjustInventory(array|SaleItem $item, int $adjustQty): void
+    private function adjustInventory(array|SaleItem $item, float $adjustQty): void // MODIFIED: $adjustQty type hint to float
     {
-        if ($adjustQty === 0) return;
+        if ($adjustQty === 0.0) return; // MODIFIED: Use float comparison
 
         $medicineId = is_array($item) ? $item['medicine_id'] : $item->medicine_id;
         $batchNumber = is_array($item) ? $item['batch_number'] : $item->batch_number;
@@ -236,31 +239,31 @@ public function update(Request $request, Sale $sale): RedirectResponse
             ->first();
 
         if (!$inventory) {
-            // This should ideally not happen if inventory is strictly managed,
-            // but for robustness, create if not found (though a sale implies it exists).
-            // For sales, if inventory isn't found, it's usually an error.
             throw new \Exception("Inventory not found for medicine ID {$medicineId}, batch {$batchNumber}.");
         }
 
-        // Prevent negative stock unless $adjustQty is positive (restoring)
-        if ($inventory->quantity + $adjustQty < 0 && $adjustQty < 0) {
-            throw new \Exception("Insufficient stock for medicine ID {$medicineId}, batch {$batchNumber}.");
+        // MODIFIED: Ensure comparisons and increments use float
+        $currentInventoryQuantity = (float)($inventory->quantity ?? 0);
+        
+        if ($currentInventoryQuantity + $adjustQty < 0 && $adjustQty < 0) {
+            throw new \Exception("Insufficient stock for medicine ID {$medicineId}, batch {$batchNumber}. Current stock: {$currentInventoryQuantity}. Attempted to reduce by: {$adjustQty}."); // Added more detail to error message
         }
         
-        $inventory->increment('quantity', $adjustQty);
+        $inventory->quantity = $currentInventoryQuantity + $adjustQty; // Direct assignment for float
+        $inventory->save();
     }
     
 private function calculateTotals(iterable $items): array
 {
-    $subtotal = 0;
-    $gst = 0;
+    $subtotal = 0.0; // MODIFIED: Initialize as float
+    $gst = 0.0; // MODIFIED: Initialize as float
 
     foreach ($items as $item) {
-        $quantity = $item['quantity'] ?? ($item->quantity ?? 0);
-        $salePrice = $item['sale_price'] ?? ($item->sale_price ?? 0);
-        $discount = $item['discount_percentage'] ?? ($item->discount_percentage ?? 0);
-        $gstRate = $item['gst_rate'] ?? ($item->gst_rate ?? 0);
-        $extraDiscount = $item['applied_extra_discount_percentage'] ?? ($item->applied_extra_discount_percentage ?? 0);
+        $quantity = (float)($item['quantity'] ?? ($item->quantity ?? 0.0)); // MODIFIED: Cast to float
+        $salePrice = (float)($item['sale_price'] ?? ($item->sale_price ?? 0.0)); // MODIFIED: Cast to float
+        $discount = (float)($item['discount_percentage'] ?? ($item->discount_percentage ?? 0.0)); // MODIFIED: Cast to float
+        $gstRate = (float)($item['gst_rate'] ?? ($item->gst_rate ?? 0.0)); // MODIFIED: Cast to float
+        $extraDiscount = (float)($item['applied_extra_discount_percentage'] ?? ($item->applied_extra_discount_percentage ?? 0.0)); // MODIFIED: Cast to float
 
         $lineTotal = $quantity * $salePrice;
 
@@ -269,7 +272,7 @@ private function calculateTotals(iterable $items): array
         $afterDiscount = $lineTotal - $discountAmount;
 
         // Apply extra discount if present
-        if ($extraDiscount > 0) {
+        if ($extraDiscount > 0.0) { // MODIFIED: Use float comparison
             $afterDiscount -= ($afterDiscount * $extraDiscount) / 100;
         }
 
@@ -315,8 +318,8 @@ private function generateBillNumber(): string
             "$key" => 'array', // Just ensure it's an array if present
             "$key.*.medicine_id" => 'required|exists:medicines,id',
             "$key.*.batch_number" => 'required|string',
-            "$key.*.quantity" => 'required|integer|min:1',
-            "$key.*.free_quantity" => 'nullable|integer|min:0',
+            "$key.*.quantity" => 'required|numeric|min:0.01', // MODIFIED: Changed from integer to numeric and min:1 to min:0.01
+            "$key.*.free_quantity" => 'nullable|numeric|min:0', // MODIFIED: Changed from integer to numeric
             "$key.*.sale_price" => 'required|numeric|min:0',
             "$key.*.gst_rate" => 'nullable|numeric|min:0',
             "$key.*.discount_percentage" => 'nullable|numeric|min:0|max:100',
@@ -324,7 +327,7 @@ private function generateBillNumber(): string
 
         // Conditionally add the 'min:1' rule if not allowing zero items (e.g., for new sales)
         if (!$allowMinZeroItems) {
-            $rules["$key"] .= '|min:1';
+            $rules["$key"] .= '|min:1'; // This min:1 applies to the array itself, not the items' quantity
         }
 
         // Apply validation
