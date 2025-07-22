@@ -19,6 +19,9 @@ use App\Http\Controllers\CustomerController;
 
 // The main dashboard route
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+// CORRECTED: The main dashboard route, now named 'dashboard.index'
+Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
+
 
 // Resourceful routes for all major features
 Route::resource('customers', CustomerController::class);

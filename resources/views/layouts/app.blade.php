@@ -32,7 +32,7 @@
                 </a>
             </div>
             <ul class="sidebar-nav">
-                <li class="nav-item"><a class="nav-link" href="#"><i class="fa-solid fa-tachometer-alt nav-icon"></i> Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ route('dashboard.index') }}"><i class="fa-solid fa-tachometer-alt nav-icon"></i> Dashboard</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ route('sales.index') }}"><i class="fa-solid fa-cart-shopping nav-icon"></i> Sales</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ route('purchase_bills.index') }}"><i class="fa-solid fa-receipt nav-icon"></i> Purchases</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ route('inventories.index') }}"><i class="fa-solid fa-boxes-stacked nav-icon"></i> Inventory</a></li>
