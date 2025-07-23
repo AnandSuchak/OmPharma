@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\PurchaseBillItem; 
 
 class Inventory extends Model
 {
@@ -38,5 +39,10 @@ class Inventory extends Model
     public function medicine(): BelongsTo
     {
         return $this->belongsTo(Medicine::class);
+    }
+
+    public function purchaseBillItem(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseBillItem::class);
     }
 }

@@ -107,4 +107,22 @@ class CustomerController extends Controller
 
         return $validated;
     }
+
+      /**
+     * Search for customers by name or phone for AJAX requests.
+     */
+    public function search(Request $request)
+    {
+        $query = $request->get('q');
+        $customers = \App\Models\Customer::where('name', 'LIKE', "%{$query}%")
+            ->orWhere('contact_number', 'LIKE', "%{$query}%")
+            ->limit(15)
+            ->get(['id', 'name']);
+
+        $results = $customers->map(function ($customer) {
+            return ['id' => $customer->id, 'text' => $customer->name];
+        });
+
+        return response()->json($results);
+    }
 }

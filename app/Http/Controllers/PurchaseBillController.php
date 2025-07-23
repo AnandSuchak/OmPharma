@@ -312,27 +312,55 @@ private function validateItems(Request $request, string $key): void
     ]);
 }
 
-   private function adjustInventory(?int $medicineId, ?string $batchNumber, ?string $expiryDate, float $paidQuantity, float $freeQuantity = 0.0): void // MODIFIED: Type hints to float
-{
-    if (!$medicineId) {
-        return;
+  private function adjustInventory(?int $medicineId, ?string $batchNumber, ?string $expiryDate, float $paidQuantity, float $freeQuantity = 0.0): void
+    {
+        if (!$medicineId) {
+            return;
+        }
+
+        $totalQuantityChange = $paidQuantity + $freeQuantity;
+
+        if ($totalQuantityChange == 0.0) {
+            return;
+        }
+
+        // 1. Find the existing inventory record for this medicine and batch number
+        // We only use medicine_id and batch_number as the lookup keys now.
+        $inventory = Inventory::firstOrNew([
+            'medicine_id'  => $medicineId,
+            'batch_number' => $batchNumber,
+        ]);
+
+        // 2. ENFORCE EXPIRY DATE CONSISTENCY
+        // If the inventory record already exists (was found by firstOrNew, not newly created)
+        // AND an expiry date is provided in the current input
+        // AND the existing expiry date is different from the new one
+        if ($inventory->exists && $expiryDate !== null) {
+            $existingExpiryDate = $inventory->expiry_date; // This will be a Carbon instance due to model casting
+
+            if ($existingExpiryDate && $existingExpiryDate->format('Y-m-d') !== Carbon::parse($expiryDate)->format('Y-m-d')) {
+                // Option A: Throw a validation error (recommended for user feedback)
+                throw ValidationException::withMessages([
+                    'batch_number' => "Batch '{$batchNumber}' for medicine ID '{$medicineId}' already has an expiry date of {$existingExpiryDate->format('Y-m-d')}. New expiry date '{$expiryDate}' does not match."
+                ]);
+                // Option B: Silently override the new expiry date with the existing one
+                // $expiryDate = $existingExpiryDate->format('Y-m-d');
+                // \Log::warning("Expiry date for batch {$batchNumber} (Med ID: {$medicineId}) was overridden to {$existingExpiryDate->format('Y-m-d')} for consistency.");
+            }
+        }
+
+        // 3. Update the expiry date (if it's a new inventory record OR if it was consistent/overridden)
+        // If $inventory->exists is false, this is a brand new batch, so set its expiry.
+        // If $inventory->exists is true, and expiry dates were consistent, or overridden, set it.
+        // If $expiryDate was null for a new batch, it remains null.
+        if ($expiryDate !== null) {
+            $inventory->expiry_date = $expiryDate;
+        }
+
+
+        // 4. Adjust the quantity
+        // Ensure inventory->quantity is also treated as float/decimal
+        $inventory->quantity = (float)($inventory->quantity ?? 0.0) + $totalQuantityChange;
+        $inventory->save();
     }
-
-    // Total change is the sum of paid and free items
-    $totalQuantityChange = $paidQuantity + $freeQuantity; // Already float due to type hints
-
-    if ($totalQuantityChange == 0.0) { // MODIFIED: Use float comparison
-        return;
-    }
-
-    $inventory = Inventory::firstOrNew([
-        'medicine_id'  => $medicineId,
-        'batch_number' => $batchNumber,
-        'expiry_date'  => $expiryDate,
-    ]);
-
-    // Ensure inventory->quantity is also treated as float/decimal
-    $inventory->quantity = (float)($inventory->quantity ?? 0.0) + $totalQuantityChange; // MODIFIED: Use 0.0 for consistency
-    $inventory->save();
-}
 }

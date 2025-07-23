@@ -125,4 +125,21 @@ class SupplierController extends Controller
             return redirect()->back()->withErrors(['error' => 'Delete failed. Supplier may be linked to other records.']);
         }
     }
+
+        /**
+     * Search for suppliers by name for AJAX requests.
+     */
+    public function search(Request $request)
+    {
+        $query = $request->get('q');
+        $suppliers = \App\Models\Supplier::where('name', 'LIKE', "%{$query}%")
+            ->limit(15)
+            ->get(['id', 'name']);
+
+        $results = $suppliers->map(function ($supplier) {
+            return ['id' => $supplier->id, 'text' => $supplier->name];
+        });
+
+        return response()->json($results);
+    }
 }

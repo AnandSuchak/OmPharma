@@ -11,6 +11,10 @@ use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Response; 
+use Illuminate\Http\JsonResponse;
+use App\Models\Sale;
+use Carbon\Carbon;
+
 
 class MedicineController extends Controller
 {
@@ -136,33 +140,47 @@ public function index(Request $request): View|JsonResponse|Response // Add Respo
      * @param int $medicineId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getBatches(Request $request, $medicineId)
+
+    public function getBatches(Request $request, Medicine $medicine): JsonResponse
     {
         $saleId = $request->query('sale_id');
 
-        // Base query for current inventory batches
-        $inventoryBatchesQuery = Inventory::query()
-            ->join('purchase_bill_items', function ($join) {
-                $join->on('inventories.medicine_id', '=', 'purchase_bill_items.medicine_id')
-                     ->on('inventories.batch_number', '=', 'purchase_bill_items.batch_number');
-            })
-            ->where('inventories.medicine_id', $medicineId)
-            ->whereNull('purchase_bill_items.deleted_at') // Ensure linked purchase item is not soft deleted
+        // Base query for current inventory batches, joining with purchase_bill_items
+        $baseBatchesQuery = Inventory::query()
             ->select(
                 'inventories.batch_number',
-                'inventories.expiry_date',
+                'inventories.expiry_date', // Expiry date from Inventory
                 'inventories.quantity', // Current inventory quantity
                 'purchase_bill_items.sale_price',
                 'purchase_bill_items.gst_rate',
-                'purchase_bill_items.ptr'
-            );
+                'purchase_bill_items.ptr',
+                // If you have 'purchase_price' or other fields in purchase_bill_items
+                // 'purchase_bill_items.purchase_price'
+            )
+            ->join('purchase_bill_items', function ($join) use ($medicine) {
+                $join->on('inventories.medicine_id', '=', 'purchase_bill_items.medicine_id')
+                     ->on('inventories.batch_number', '=', 'purchase_bill_items.batch_number');
+                     // It's good practice to also filter by medicine_id here if possible for efficiency
+                     // $join->where('inventories.medicine_id', $medicine->id); // This might be redundant due to main where clause
+            })
+            ->where('inventories.medicine_id', $medicine->id) // Filter by the specific medicine
+            ->whereNull('purchase_bill_items.deleted_at'); // Ensure linked purchase item is not soft deleted
+
 
         $batches = collect(); // Initialize an empty collection
 
         if ($saleId) {
-            // Fetch existing sale items for this medicine and sale
+            // When editing a sale, we also need to include batches that were part of THIS sale,
+            // even if they are now out of stock in inventory.
+
+            // 1. Fetch the current inventory batches with their purchase details
+            $currentInventoryBatches = (clone $baseBatchesQuery)->get(); // Clone to prevent modifying original query builder
+
+
+            // 2. Fetch existing sale items for this medicine and sale separately
+            // This is crucial for attaching the 'existing_sale_item' data later.
             $existingSaleItems = SaleItem::where('sale_id', $saleId)
-                ->where('medicine_id', $medicineId)
+                ->where('medicine_id', $medicine->id)
                 ->get([
                     'batch_number',
                     'quantity', // Quantity sold in this sale
@@ -171,61 +189,64 @@ public function index(Request $request): View|JsonResponse|Response // Add Respo
                     'discount_percentage',
                     'applied_extra_discount_percentage',
                     'is_extra_discount_applied',
-                    'expiry_date', // Also fetch expiry_date from SaleItem
-                    'gst_rate',    // Also fetch gst_rate from SaleItem
-                    'ptr'          // Also fetch ptr from SaleItem
-                ]);
+                    'expiry_date',
+                    'gst_rate',
+                    'ptr',
+                    // Include any other SaleItem fields you need for existing_sale_item
+                ])
+                ->keyBy('batch_number'); // Key by batch_number for efficient lookup
 
-            // Create a query for batches from existing sale items,
-            // ensuring we get their purchase details if available.
-            $saleItemBatchesQuery = SaleItem::query()
-                ->join('purchase_bill_items', function ($join) {
-                    $join->on('sale_items.medicine_id', '=', 'purchase_bill_items.medicine_id')
-                         ->on('sale_items.batch_number', '=', 'purchase_bill_items.batch_number');
-                })
-                ->where('sale_items.sale_id', $saleId)
-                ->where('sale_items.medicine_id', $medicineId)
-                ->whereNull('purchase_bill_items.deleted_at')
+            // 3. Create a query for batches that were part of THIS sale but might not be in current inventory (or are 0 stock)
+            // We join with purchase_bill_items to get consistent pricing data for these past sale items.
+            $saleItemBatchesFromPastSaleQuery = SaleItem::query()
                 ->select(
                     'sale_items.batch_number',
-                    'purchase_bill_items.expiry_date', // Use expiry from purchase bill item for consistency
-                    DB::raw('0 as quantity'), // Set current quantity to 0 as it's from a past sale item, not current inventory
+                    'purchase_bill_items.expiry_date', // Use expiry from purchase item for consistency
+                    DB::raw('0 as quantity'), // Quantity is 0 for past sale item (current inventory perspective)
                     'purchase_bill_items.sale_price',
                     'purchase_bill_items.gst_rate',
                     'purchase_bill_items.ptr'
                 )
-                ->distinct();
+                ->join('purchase_bill_items', function ($join) use ($medicine) {
+                    $join->on('sale_items.medicine_id', '=', 'purchase_bill_items.medicine_id')
+                         ->on('sale_items.batch_number', '=', 'purchase_bill_items.batch_number');
+                         // $join->where('sale_items.medicine_id', $medicine->id); // Redundant here due to outer where
+                })
+                ->where('sale_items.sale_id', $saleId)
+                ->where('sale_items.medicine_id', $medicine->id)
+                ->whereNull('purchase_bill_items.deleted_at')
+                ->distinct(); // Use distinct to avoid duplicate batches if a sale item was somehow duplicated
 
-            // Union the current inventory batches with batches from existing sale items
-            // This ensures that even if a batch is out of stock, if it was part of THIS sale, it's included.
-            $batches = $inventoryBatchesQuery->union($saleItemBatchesQuery)->get();
 
-            // Now, iterate through the combined batches and attach the existing_sale_item data
-            foreach ($batches as $batch) {
-                $match = $existingSaleItems->firstWhere('batch_number', $batch->batch_number);
-                if ($match) {
-                    $batch->existing_sale_item = $match;
-                }
+            // 4. Combine the two sets of batches using union
+            // The union operation ensures that if a batch is in inventory AND in the current sale,
+            // it appears once with its inventory quantity. If it's only in the current sale,
+            // it appears once with quantity 0 (and its pricing from PBI).
+            $combinedBatches = $baseBatchesQuery->union($saleItemBatchesFromPastSaleQuery)->get();
+
+            // 5. Attach the existing_sale_item data to the combined batches
+            foreach ($combinedBatches as $batch) {
+                $batch->existing_sale_item = $existingSaleItems->get($batch->batch_number);
             }
+            $batches = $combinedBatches;
 
         } else {
             // If no saleId is provided (i.e., new sale entry), only show batches with available stock
-            $batches = $inventoryBatchesQuery->where('inventories.quantity', '>', 0)->get();
+            $batches = $baseBatchesQuery->where('inventories.quantity', '>', 0)->get();
         }
 
         // Map the batches to ensure all quantities are floats and dates are formatted
         $mappedBatches = $batches->map(function ($batch) {
             return [
-                'batch_number'                => $batch->batch_number,
-                'expiry_date'                 => $batch->expiry_date ? \Carbon\Carbon::parse($batch->expiry_date)->format('Y-m-d') : null,
-                'quantity'                    => (float)$batch->quantity, // Ensure float
-                'purchase_price'              => (float)($batch->purchase_price ?? 0.0), // Use $batch directly if joined
-                'sale_price'                  => (float)($batch->sale_price ?? 0.0),    // Use $batch directly if joined
-                'ptr'                         => (float)($batch->ptr ?? 0.0),           // Use $batch directly if joined
-                'customer_discount_percentage'=> (float)($batch->discount_percentage ?? 0.0), // This might be missing from join, consider fetching from original PBI if needed
-                'our_discount_percentage'     => (float)($batch->our_discount_percentage ?? 0.0), // This might be missing from join
-                'gst'                         => (float)($batch->gst_rate ?? 0.0),      // Use $batch directly if joined
-                'existing_sale_item'          => $batch->existing_sale_item ?? null // Pass existing sale item data if present
+                'batch_number'              => $batch->batch_number,
+                'expiry_date'               => $batch->expiry_date ? Carbon::parse($batch->expiry_date)->format('Y-m-d') : '',
+                'quantity'                  => (float)$batch->quantity, // Ensure float
+                'sale_price'                => (float)($batch->sale_price ?? 0.0), // Should be present due to join
+                'ptr'                       => (float)($batch->ptr ?? 0.0),       // Should be present due to join
+                'gst'                       => (float)($batch->gst_rate ?? 0.0),   // Should be present due to join
+                'existing_sale_item'        => $batch->existing_sale_item ?? null // Pass existing sale item data if present
+                // Removed purchase_price, customer_discount_percentage, our_discount_percentage
+                // as they weren't selected in the queries. Add to select if needed from PBI.
             ];
         });
 

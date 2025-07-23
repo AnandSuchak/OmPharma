@@ -77,14 +77,7 @@
                     @enderror
                 </div>
 
-                <div class="mb-3">
-                    <label for="quantity" class="form-label">Initial Quantity (Optional):</label>
-                    <input type="number" name="quantity" id="quantity" class="form-control @error('quantity') is-invalid @enderror" value="{{ old('quantity', 0) }}" min="0" placeholder="e.g., 100">
-                    @error('quantity')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
-                    <small class="form-text text-muted">This will be the initial stock. Stock is primarily managed via purchase bills.</small>
-                </div>
+              
 
                 <button type="submit" class="btn btn-success">
                     <i class="fa fa-save me-1"></i> Add Medicine

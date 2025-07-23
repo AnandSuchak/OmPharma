@@ -178,10 +178,9 @@
         const paginationLinks = document.getElementById('pagination_links');
 
         // Basic check to ensure elements exist before attaching listeners
-        if (!searchInput || !tableBody || !paginationLinks) {
-            console.error('Purchase bill search elements not found. Check IDs in Blade template.');
-            return;
-        }
+       if (!searchInput || !tableBody || !paginationLinks) {
+        return; // Exit silently if not on index page
+    }
 
         let searchTimeout; // For debouncing the search input
 

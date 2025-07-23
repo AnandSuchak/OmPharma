@@ -3,11 +3,13 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InventoryController;
-use App\Http\Controllers\MedicineController; // Ensure this is imported
+use App\Http\Controllers\MedicineController;
 use App\Http\Controllers\PurchaseBillController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\InventoryLogController;
 
 /*
 |--------------------------------------------------------------------------
@@ -15,59 +17,60 @@ use App\Http\Controllers\CustomerController;
 |--------------------------------------------------------------------------
 */
 
-// --- USER INTERFACE ROUTES (Return full pages) ---
+// --- Main App Routes ---
+// Redirect the root URL to the dashboard for a better user experience.
+Route::get('/', fn() => redirect()->route('dashboard.index'));
 
-// The main dashboard route
-Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
-// CORRECTED: The main dashboard route, now named 'dashboard.index'
+// Define the main dashboard route.
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
 
-
-// Resourceful routes for all major features
+// Resourceful routes for all major features.
 Route::resource('customers', CustomerController::class);
 Route::resource('suppliers', SupplierController::class);
 Route::resource('medicines', MedicineController::class);
 Route::resource('purchase_bills', PurchaseBillController::class);
 Route::resource('sales', SaleController::class);
+Route::resource('inventories', InventoryController::class)->only(['index', 'show']);
 
-// Custom route for showing detailed inventory for a specific medicine
-Route::resource('inventories', InventoryController::class)->only(['index']);
-Route::get('/inventories/{medicine}', [InventoryController::class, 'show'])->name('inventories.show');
-
-// --- Custom Sale Routes ---
+// --- Custom Routes ---
 Route::get('/sales/{sale}/print', [SaleController::class, 'print'])->name('sales.print');
-// ADDED: Route for generating the PDF invoice for a sale
 Route::get('/sales/{sale}/print-pdf', [SaleController::class, 'printPdf'])->name('sales.print.pdf');
 
 
 // --- API / DATA-FETCHING ROUTES ---
-// These routes are called by your JavaScript to get data.
+// Group all AJAX/API routes under a common prefix and name for consistency.
+Route::prefix('api')->name('api.')->group(function () {
+    // Medicine related API routes
+    Route::get('/medicines/search', [MedicineController::class, 'search'])->name('medicines.search');
+    Route::get('/medicines/{medicine}/batches', [MedicineController::class, 'getBatches'])->name('medicines.batches');
+    Route::get('/medicines/{medicine}/gst', [MedicineController::class, 'getGstRate'])->name('medicines.gst');
+    Route::get('/medicines/search-names', [MedicineController::class, 'searchNames'])->name('medicines.search-names');
+    Route::get('/medicines/packs', [MedicineController::class, 'getPacksForName'])->name('medicines.packs');
+    Route::get('/medicines/{medicine}/details', [MedicineController::class, 'getDetails'])->name('medicines.details');
+    Route::get('/medicines/search-with-qty', [MedicineController::class, 'searchWithQty'])->name('medicines.searchWithQty');
+    Route::get('/medicines-search', [MedicineController::class, 'search_medicines_ajax'])->name('medicines.search_ajax');
+    Route::get('/medicines/{medicine}/batches-for-edit', [MedicineController::class, 'getBatchesForEdit'])->name('medicines.batches-for-edit');
+    
+    // CORRECTED: Customer and Supplier search routes are now correctly named.
+    Route::get('/customers/search', [CustomerController::class, 'search'])->name('customers.search');
+    Route::get('/suppliers/search', [SupplierController::class, 'search'])->name('suppliers.search');
+});
 
-// CORRECTED: Route to get all batches for a specific medicine ID for the sales form
-// It MUST point to MedicineController and its getBatches method
-Route::get('/api/medicines/{medicine}/batches', [MedicineController::class, 'getBatches'])->name('api.medicines.batches');
 
-// Route to get the GST rate for a specific medicine
-Route::get('/api/medicines/{medicine}/gst', [MedicineController::class, 'getGstRate'])->name('api.medicines.gst');
+// --- REPORTS ---
+// This group ensures all report URLs start with /reports and are named reports.*
+Route::prefix('reports')->name('reports.')->group(function () {
+    // Main page for reports
+    Route::get('/', [ReportController::class, 'index'])->name('index');
 
-// Original route for the Select2 AJAX search (for Sales Bill medicine search)
-Route::get('/api/medicines/search', [MedicineController::class, 'search'])->name('api.medicines.search');
+    // API-like routes for fetching report data
+    Route::post('/top-medicines', [ReportController::class, 'fetchTopMedicines'])->name('fetch.top-medicines');
+    Route::post('/medicine-comparison', [ReportController::class, 'fetchMedicineComparison'])->name('fetch.medicine-comparison');
+    Route::post('/medicine-details', [ReportController::class, 'fetchMedicineDetails'])->name('fetch.medicine-details');
+    Route::post('/customer-details', [ReportController::class, 'fetchCustomerDetails'])->name('fetch.customer-details');
+    Route::post('/supplier-details', [ReportController::class, 'fetchSupplierDetails'])->name('fetch.supplier-details');
+});
 
-// New route to search for unique medicine names (likely for Purchase Bill)
-Route::get('/api/medicines/search-names', [MedicineController::class, 'searchNames'])->name('api.medicines.search-names');
 
-// New route to get all packs for a given medicine name (likely for Purchase Bill)
-Route::get('/api/medicines/packs', [MedicineController::class, 'getPacksForName'])->name('api.medicines.packs');
 
-// Route for medicine details (likely for Purchase Bill or other info display)
-Route::get('/api/medicines/{medicine}/details', [MedicineController::class, 'getDetails'])->name('api.medicines.details'); // Added name for consistency
-
-Route::get('/sales/{id}/print', [SaleController::class, 'print'])->name('sales.print');
-
-// NEW ROUTE: For searching medicines WITH AVAILABLE QUANTITY (for Sales form)
-Route::get('/api/medicines/search-with-qty', [MedicineController::class, 'searchWithQty'])->name('api.medicines.searchWithQty');
-
-Route::get('/api/medicines-search', [App\Http\Controllers\MedicineController::class, 'search_medicines_ajax'])->name('medicines.search_ajax');
-
-// NEW ROUTE: For fetching batches specifically for editing a sale item
-Route::get('/api/medicines/{medicine}/batches-for-edit', [MedicineController::class, 'getBatchesForEdit'])->name('api.medicines.batches-for-edit');
+Route::get('/inventory-logs', [InventoryLogController::class, 'index'])->name('inventory_logs.index');

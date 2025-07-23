@@ -39,7 +39,13 @@
                 <li class="nav-item"><a class="nav-link" href="{{ route('medicines.index') }}"><i class="fa-solid fa-tablets nav-icon"></i> Medicines</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ route('suppliers.index') }}"><i class="fa-solid fa-truck-field nav-icon"></i> Suppliers</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ route('customers.index') }}"><i class="fa-solid fa-users nav-icon"></i> Customers</a></li>
-            </ul>
+                 <li class="nav-item"><a class="nav-link" href="{{ route('reports.index') }}"><i class="fa-solid fa-book nav-icon"></i> reports</a></li>
+                    <li class="nav-item">
+                    <a class="nav-link" href="{{ route('inventory_logs.index') }}">
+                        <i class="fa-solid fa-clipboard-list nav-icon"></i> Inventory Log
+                    </a>
+                </li>
+                </ul>
         </aside>
 
         <!-- Main Content -->
