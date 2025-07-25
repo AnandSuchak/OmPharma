@@ -23,7 +23,7 @@
         <div class="card-header bg-light fw-semibold">🗂️ Sale Information</div>
         <div class="card-body">
             <div class="row gy-3">
-                <div class="col-md-4"><strong>Bill Number:</strong> {{ $sale->bill_number }}</div>
+                <div class="col-md-4"><strong>Bill Number:</strong> {{ $sale->bill_number ?? '' }}</div>
                 <div class="col-md-4"><strong>Customer Name:</strong> {{ $sale->customer->name ?? 'N/A' }}</div>
                 <div class="col-md-4"><strong>Sale Date:</strong> {{ \Carbon\Carbon::parse($sale->sale_date)->format('d M Y') }}</div>
                 

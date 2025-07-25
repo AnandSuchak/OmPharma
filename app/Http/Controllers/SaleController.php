@@ -35,6 +35,7 @@ class SaleController extends Controller
     {
         return view('sales.create', [
             'customers' => Customer::all(),
+            'sale' => null,
         ]);
     }
 
@@ -113,122 +114,129 @@ class SaleController extends Controller
      * Show the form for editing the specified sale.
      */
     public function edit(Sale $sale): View
-    {
-        // Load both sale items and customer so the name is always available after validation errors
-        $sale->load('saleItems.medicine', 'customer');
-        $customers = Customer::all();
+{
+    $sale->load('saleItems.medicine', 'customer');
+    $customers = Customer::all();
 
-        return view('sales.create', compact('sale', 'customers'));
-    }
+    return view('sales.create', [
+        'sale' => $sale,   // make sure this line exists
+        'customers' => $customers
+    ]);
+}
 
     /**
      * Update the specified sale in storage.
      */
-    public function update(Request $request, Sale $sale): RedirectResponse
-    {
-        \Log::info('SALE UPDATE REQUEST DATA', $request->all());
+   public function update(Request $request, Sale $sale): RedirectResponse
+{
+    \Log::info('SALE UPDATE REQUEST DATA', $request->all());
 
-        // Validate main sale details
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'sale_date' => 'required|date',
-            'notes' => 'nullable|string',
+    // Validate main sale details
+    $request->validate([
+        'customer_id' => 'required|exists:customers,id',
+        'sale_date' => 'required|date',
+        'notes' => 'nullable|string',
+    ]);
+
+    // Validate existing and new sale items. `true` allows 0 items in a group if others are present.
+    $this->validateSale($request, 'existing_sale_items', true);
+    $this->validateSale($request, 'new_sale_items', true);
+
+    // Check if at least one item remains after potential deletions and new additions
+    $deletedItemIds = array_filter(explode(',', $request->input('deleted_items', '')));
+    $remainingExistingItemsCount = $sale->saleItems()->whereNotIn('id', $deletedItemIds)->count();
+    $newItemsCount = count($request->input('new_sale_items', []));
+
+    if (($remainingExistingItemsCount + $newItemsCount) === 0) {
+        return back()->withErrors(['A sale must contain at least one item after update.'])->withInput();
+    }
+
+    try {
+        DB::beginTransaction();
+
+        // Update the main Sale record
+        $sale->update($request->only(['customer_id', 'sale_date', 'notes']) + [
+            'customer_name' => Customer::find($request->customer_id)?->name ?? 'Unknown',
         ]);
 
-        // Validate existing and new sale items. `true` allows 0 items in a group if others are present.
-        $this->validateSale($request, 'existing_sale_items', true);
-        $this->validateSale($request, 'new_sale_items', true);
+        // Track original quantities for existing items BEFORE any updates/deletions
+        $originalQuantities = $sale->saleItems->keyBy('id');
 
-        // Check if at least one item remains after potential deletions and new additions
-        $deletedItemIds = array_filter(explode(',', $request->input('deleted_items', '')));
-        $remainingExistingItemsCount = $sale->saleItems()->whereNotIn('id', $deletedItemIds)->count();
-        $newItemsCount = count($request->input('new_sale_items', []));
+        // Handle deleted items first (add their original quantities back to inventory)
+        $this->handleDeletedItems((string) $request->input('deleted_items', ''));
 
-        if (($remainingExistingItemsCount + $newItemsCount) === 0) {
-            return back()->withErrors(['A sale must contain at least one item after update.'])->withInput();
+        // Process existing items: update their details and adjust inventory by the net change
+        if ($request->has('existing_sale_items')) {
+            foreach ($request->existing_sale_items as $itemData) {
+                $itemId = $itemData['id'];
+                $itemToUpdate = SaleItem::findOrFail($itemId);
+
+                $originalTotalQty = (float)($originalQuantities[$itemId]->quantity ?? 0) + (float)($originalQuantities[$itemId]->free_quantity ?? 0);
+                $newTotalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
+                $quantityDiff = $newTotalQty - $originalTotalQty;
+
+                if ($quantityDiff !== 0.0) {
+                    $this->adjustInventory($itemToUpdate, -$quantityDiff);
+                }
+
+                $itemData['applied_extra_discount_percentage'] = $this->normalizeAppliedExtraDiscount($itemData);
+                $itemData['is_extra_discount_applied'] = $itemData['applied_extra_discount_percentage'] > 0 ? 1 : 0;
+
+                $itemToUpdate->update($itemData);
+            }
         }
 
-        try {
-            DB::beginTransaction();
+        // Process new items: create new SaleItem records and reduce inventory
+        if ($request->has('new_sale_items')) {
+            foreach ($request->new_sale_items as $itemData) {
+                $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
 
-            // Update the main Sale record
-            $sale->update($request->only(['customer_id', 'sale_date', 'notes']) + [
-                'customer_name' => Customer::find($request->customer_id)?->name ?? 'Unknown',
-            ]);
+                $itemData['applied_extra_discount_percentage'] = $this->normalizeAppliedExtraDiscount($itemData);
+                $itemData['is_extra_discount_applied'] = $itemData['applied_extra_discount_percentage'] > 0 ? 1 : 0;
 
-            // Track original quantities for existing items BEFORE any updates/deletions
-            $originalQuantities = $sale->saleItems->keyBy('id');
+                $this->adjustInventory($itemData, -$totalQty);
 
-            // Handle deleted items first (add their original quantities back to inventory)
-            $this->handleDeletedItems((string) $request->input('deleted_items', ''));
-
-            // Process existing items: update their details and adjust inventory by the net change
-            if ($request->has('existing_sale_items')) {
-                foreach ($request->existing_sale_items as $itemData) {
-                    $itemId = $itemData['id'];
-                    $itemToUpdate = SaleItem::findOrFail($itemId); // Find the original SaleItem record
-
-                    // Calculate the change in quantity (new sold - original sold)
-                    $originalTotalQty = (float)($originalQuantities[$itemId]->quantity ?? 0) + (float)($originalQuantities[$itemId]->free_quantity ?? 0);
-                    $newTotalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
-                    $quantityDiff = $newTotalQty - $originalTotalQty; // Positive if quantity increased, negative if decreased
-
-                    // Adjust inventory by the NET change.
-                    // If quantity increased: $quantityDiff is positive, so adjustInventory reduces stock (-$quantityDiff)
-                    // If quantity decreased: $quantityDiff is negative, so adjustInventory adds stock (-$quantityDiff = positive)
-                    if ($quantityDiff !== 0.0) {
-                        $this->adjustInventory($itemToUpdate, -$quantityDiff); // Pass item object and the negated difference
-                    }
-
-                    // Normalize extra discount fields from request input before updating SaleItem
-                    $itemData['applied_extra_discount_percentage'] = $this->normalizeAppliedExtraDiscount($itemData);
-                    $itemData['is_extra_discount_applied'] = $itemData['applied_extra_discount_percentage'] > 0 ? 1 : 0;
-
-                    $itemToUpdate->update($itemData); // Update the SaleItem record
-                }
+                $sale->saleItems()->create($itemData);
             }
-
-            // Process new items: create new SaleItem records and reduce inventory
-            if ($request->has('new_sale_items')) {
-                foreach ($request->new_sale_items as $itemData) {
-                    $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
-                    
-                    // Normalize extra discount fields for creating SaleItem
-                    $itemData['applied_extra_discount_percentage'] = $this->normalizeAppliedExtraDiscount($itemData);
-                    $itemData['is_extra_discount_applied'] = $itemData['applied_extra_discount_percentage'] > 0 ? 1 : 0;
-                    
-                    // Adjust inventory (reduce stock for new items sold)
-                    $this->adjustInventory($itemData, -$totalQty);
-                    
-                    // Create the new SaleItem record
-                    $sale->saleItems()->create($itemData);
-                }
-            }
-
-            // Recalculate and update the overall sale totals based on current sale items
-            $this->updateSaleTotals($sale);
-
-            // Log updated totals and items for debugging/verification
-            \Log::info('SALE TOTALS AFTER UPDATE', [
-                'sale_id' => $sale->id,
-                'totals' => [
-                    'total_amount' => $sale->total_amount,
-                    'total_gst_amount' => $sale->total_gst_amount,
-                ],
-                'items' => $sale->saleItems()->get()->toArray(),
-            ]);
-
-            DB::commit();
-            return redirect()->route('sales.index')->with('success', 'Sale updated successfully.');
-
-        } catch (ValidationException $e) { // Catch specific validation exceptions (e.g., from adjustInventory)
-            DB::rollBack();
-            return back()->withInput()->withErrors($e->errors());
-        } catch (\Throwable $e) { // Catch any other general exceptions
-            DB::rollBack();
-            return back()->withInput()->withErrors(['error' => 'Sale update failed: ' . $e->getMessage()]);
         }
+
+        // Recalculate and update the overall sale totals
+        $this->updateSaleTotals($sale);
+
+        // --- DEBUG PATCH: Log update details ---
+        \Log::info('SALE UPDATE DEBUG', [
+            'sale_id' => $sale->id,
+            'deleted_items' => $request->input('deleted_items', ''),
+            'recalculated_totals' => [
+                'total_amount' => $sale->total_amount,
+                'total_gst_amount' => $sale->total_gst_amount,
+            ],
+            'current_sale_items' => $sale->saleItems()->get()->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'medicine_id' => $item->medicine_id,
+                    'batch_number' => $item->batch_number,
+                    'quantity' => $item->quantity,
+                    'free_quantity' => $item->free_quantity,
+                    'sale_price' => $item->sale_price,
+                    'gst_rate' => $item->gst_rate,
+                    'discount_percentage' => $item->discount_percentage,
+                    'applied_extra_discount_percentage' => $item->applied_extra_discount_percentage,
+                ];
+            }),
+        ]);
+
+        DB::commit();
+        return redirect()->route('sales.index')->with('success', 'Sale updated successfully.');
+
+    } catch (ValidationException $e) {
+        DB::rollBack();
+        return back()->withInput()->withErrors($e->errors());
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return back()->withInput()->withErrors(['error' => 'Sale update failed: ' . $e->getMessage()]);
     }
+}
 
     /**
      * Remove the specified sale from storage.
@@ -278,36 +286,37 @@ class SaleController extends Controller
      * @throws \Exception|\Illuminate\Validation\ValidationException
      */
     private function adjustInventory(array|SaleItem $item, float $adjustQty): void
-    {
-        if ($adjustQty === 0.0) return; // No change needed
+{
+    if ($adjustQty === 0.0) return; // No change needed
 
-        $medicineId = is_array($item) ? $item['medicine_id'] : $item->medicine_id;
-        $batchNumber = is_array($item) ? $item['batch_number'] : $item->batch_number;
+    $medicineId = is_array($item) ? $item['medicine_id'] : $item->medicine_id;
+    $batchNumber = is_array($item) ? $item['batch_number'] : $item->batch_number;
 
-        // Find the inventory record for the specific medicine and batch
-        $inventory = Inventory::where('medicine_id', $medicineId)
-            ->where('batch_number', $batchNumber)
-            ->first();
+    // Find or create the inventory record for the specific medicine and batch
+    $inventory = Inventory::firstOrNew([
+        'medicine_id' => $medicineId,
+        'batch_number' => $batchNumber,
+    ]);
 
-        // Critical error: If inventory record isn't found for a batch being adjusted.
-        if (!$inventory) {
-            throw new \Exception("Inventory not found for medicine ID {$medicineId}, batch '{$batchNumber}'. Cannot adjust stock.");
-        }
-
-        $currentInventoryQuantity = (float)($inventory->quantity ?? 0);
-
-        // Prevent negative stock: This check applies only when reducing stock ($adjustQty is negative)
-        if ($adjustQty < 0 && $currentInventoryQuantity + $adjustQty < 0) {
-            throw ValidationException::withMessages([
-                'quantity' => "Insufficient stock for medicine ID {$medicineId}, batch '{$batchNumber}'. Current stock: {$currentInventoryQuantity}. Attempted to reduce by: " . abs($adjustQty) . "."
-            ]);
-        }
-
-        // Update the inventory quantity
-        $inventory->quantity = $currentInventoryQuantity + $adjustQty;
-        $inventory->save();
+    // If it's a new record, initialize quantity to 0
+    if (!$inventory->exists) {
+        $inventory->quantity = 0;
     }
-    
+
+    $currentInventoryQuantity = (float)($inventory->quantity ?? 0);
+
+    // Prevent negative stock: This check applies only when reducing stock
+    if ($adjustQty < 0 && $currentInventoryQuantity + $adjustQty < 0) {
+        throw ValidationException::withMessages([
+            'quantity' => "Insufficient stock for medicine ID {$medicineId}, batch '{$batchNumber}'. Current stock: {$currentInventoryQuantity}. Attempted to reduce by: " . abs($adjustQty) . "."
+        ]);
+    }
+
+    // Update the inventory quantity
+    $inventory->quantity = $currentInventoryQuantity + $adjustQty;
+    $inventory->save();
+}
+
     /**
      * Calculates total amount and total GST amount for a collection of sale items.
      *

@@ -34,7 +34,7 @@
         </div>
     @endif
 
-    <form action="{{ isset($sale) ? route('sales.update', $sale->id) : route('sales.store') }}" method="POST">
+    <form action="{{ isset($sale) ? route('sales.update', optional($sale)->id) : route('sales.store') }}" method="POST">
         @csrf
         @if(isset($sale)) @method('PUT') @endif
         <input type="hidden" id="deleted_items" name="deleted_items" value="">
@@ -49,7 +49,7 @@
                         <select class="form-select" id="customer_id" name="customer_id" data-placeholder="Select or search customer..." required>
                             <option></option>
                             @foreach ($customers as $customer)
-                                <option value="{{ $customer->id }}" {{ old('customer_id', $sale->customer_id ?? '') == $customer->id ? 'selected' : '' }}>
+                                <option value="{{ $customer->id }}" {{ old('customer_id', optional($sale)->customer_id ?? '') == $customer->id ? 'selected' : '' }}>
                                     {{ $customer->name }}
                                 </option>
                             @endforeach
@@ -57,20 +57,19 @@
                     </div>
                     <div class="col-md-6">
                         <label for="sale_date" class="form-label fw-semibold">📅 Sale Date</label>
-                        <input type="date" class="form-control" id="sale_date" name="sale_date" value="{{ old('sale_date', isset($sale) ? $sale->sale_date->toDateString() : now()->toDateString()) }}" required>
+                        <input type="date" class="form-control" id="sale_date" name="sale_date" value="{{ old('sale_date', isset($sale) ? optional($sale->sale_date)->toDateString() : now()->toDateString()) }}" required>
                     </div>
                 </div>
             </div>
         </div>
 
         {{-- Sale Items --}}
-      <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
-<div id="sale_items_container"
-     data-search-url="{{ route('api.medicines.searchWithQty') }}"
-     data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}"
-     data-is-edit="{{ isset($sale) ? 'true' : 'false' }}"
-     data-sale-id="{{ $sale->id ?? '' }}">
-        
+        <h5 class="mb-3"><i class="fa fa-capsules me-1"></i>Sale Items</h5>
+        <div id="sale_items_container"
+             data-search-url="{{ route('api.medicines.searchWithQty') }}"
+             data-batch-base-url="{{ route('api.medicines.batches', ['medicine' => 'PLACEHOLDER']) }}"
+             data-is-edit="{{ isset($sale) ? 'true' : 'false' }}"
+             data-sale-id="{{ optional($sale)->id ?? '' }}">
 
             @if(isset($sale) && !old('new_sale_items') && !old('existing_sale_items'))
                 @foreach ($sale->saleItems as $item)
@@ -87,7 +86,7 @@
                         data-discount-percentage="{{ $item->discount_percentage }}"
                         data-ptr="{{ $item->ptr ?? '' }}"
                         data-pack="{{ $item->medicine?->pack ?? '' }}"
-                        data-is-extra-discount-applied="{{ $item->is_extra_discount_applied ? 'true' : 'false' }}" {{-- This is correct --}}
+                        data-is-extra-discount-applied="{{ $item->is_extra_discount_applied ? 'true' : 'false' }}"
                         data-applied-extra-discount-percentage="{{ $item->applied_extra_discount_percentage ?? 0.00 }}">
                         @include('sales.partials.sale_item_row', [
                             'item' => $item,
@@ -131,7 +130,7 @@
         @include('sales.partials.sale_item_row', [
             'item' => null,
             'index' => '__INDEX__',
-            'prefix' => 'new_sale_items[__PREFIX__]'
+            'prefix' => '__PREFIX__' 
         ])
     </div>
 </template>

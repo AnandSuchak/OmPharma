@@ -6,797 +6,309 @@ document.addEventListener('DOMContentLoaded', function () {
     const template = document.getElementById('sale_item_template');
     const medicineSearchUrl = container.dataset.searchUrl;
     const batchApiUrlBase = container.dataset.batchBaseUrl;
-
-    // IMPORTANT: Read the new data attributes from the container
-    const isEditMode = container.dataset.isEdit === 'true'; // Converts "true"|"false" string to boolean true|false
-    const saleId = container.dataset.saleId; // Will be the actual ID string or an empty string ""
-
+    const isEditMode = container.dataset.isEdit === 'true';
+    const saleId = container.dataset.saleId;
     let itemCount = document.querySelectorAll('.sale-item-wrapper').length;
     const saleForm = document.querySelector('form');
 
-    // --- Constants ---
     const EXTRA_DISCOUNT_PERCENTAGE = 3;
 
-    // --- Reset item details globally ---
-    function resetItemDetails(wrapper, resetQuantity = true) {
-        // MODIFIED: Replaced optional chaining for assignment with explicit null checks
-        const salePriceInput = wrapper.querySelector('.sale-price-input');
-        const mrpInputDisplay = wrapper.querySelector('.mrp-input');
-        const gstPercentDisplay = wrapper.querySelector('.gst-percent-input');
-        const gstAmountDisplay = wrapper.querySelector('.gst-amount-input');
-        const discountInput = wrapper.querySelector('.discount-percentage-input');
+    function clearAndDisable(wrapper, selector) {
+        const select = $(wrapper).find(selector);
+        select.empty().trigger('change').prop('disabled', true);
+    }
+
+    function resetItemDetails(wrapper) {
+        wrapper.querySelector('.sale-price-input').value = '0.00';
+        wrapper.querySelector('.mrp-input').value = 'N/A';
+        wrapper.querySelector('.gst-percent-input').value = '0%';
+        wrapper.querySelector('.gst-amount-input').value = '0.00';
+        wrapper.querySelector('.discount-percentage-input').value = '0';
+        wrapper.querySelector('.gst-rate-input').value = '0';
+        wrapper.querySelector('.expiry-date-input').value = '';
+        wrapper.querySelector('.mrp-input-hidden').value = '';
+        if (wrapper.querySelector('.pack-name-hidden')) {
+            wrapper.querySelector('.pack-name-hidden').value = '';
+        }
+        wrapper.querySelector('.extra-discount-checkbox').checked = false;
+        wrapper.querySelector('.applied-extra-discount-percentage').value = '0.00';
         const quantityInput = wrapper.querySelector('.quantity-input');
-        const freeQuantityInput = wrapper.querySelector('.free-qty-input');
-        const gstRateInputHidden = wrapper.querySelector('.gst-rate-input');
-        const expiryDateInput = wrapper.querySelector('.expiry-date-input');
-        const ptrInputHidden = wrapper.querySelector('.mrp-input-hidden');
-        const packInputHidden = wrapper.querySelector('.pack-input');
-        const availableQuantityDisplay = wrapper.querySelector('.available-quantity');
-        const extraDiscountCheckbox = wrapper.querySelector('.extra-discount-checkbox');
-        const appliedExtraDiscountInput = wrapper.querySelector('.applied-extra-discount-percentage');
+        quantityInput.value = '0';
+        quantityInput.disabled = true;
+        quantityInput.removeAttribute('max');
+        wrapper.querySelector('.free-qty-input').value = '0';
+        wrapper.setAttribute('data-available-quantity', '0');
+        wrapper.querySelector('.available-quantity').textContent = '';
+    }
 
-        if (salePriceInput) salePriceInput.value = parseFloat(0).toFixed(2);
-        if (mrpInputDisplay) mrpInputDisplay.value = 'N/A';
-        if (gstPercentDisplay) gstPercentDisplay.value = '0%';
-        if (gstAmountDisplay) gstAmountDisplay.value = parseFloat(0).toFixed(2);
-        if (discountInput) discountInput.value = 0;
-
-        if (gstRateInputHidden) gstRateInputHidden.value = 0;
-        if (expiryDateInput) expiryDateInput.value = '';
-        if (ptrInputHidden) ptrInputHidden.value = '';
-        if (packInputHidden) packInputHidden.value = '';
-
-        if (extraDiscountCheckbox) extraDiscountCheckbox.checked = false;
-        if (appliedExtraDiscountInput) appliedExtraDiscountInput.value = parseFloat(0).toFixed(2);
-
-        if (resetQuantity) {
-            if (quantityInput) {
-                quantityInput.value = 0;
-                quantityInput.disabled = true;
-                quantityInput.setAttribute('max', '0');
-                quantityInput.classList.remove('is-invalid');
+    function initializeRow(wrapper) {
+        $(wrapper).find('.medicine-name-select').select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Search for medicine...',
+            allowClear: true,
+            ajax: {
+                url: medicineSearchUrl,
+                dataType: 'json',
+                delay: 250,
+                data: params => ({ q: params.term }),
+                processResults: data => ({
+                    results: data.map(item => ({
+                        id: item.id,
+                        text: item.text,
+                        original_data: item
+                    }))
+                })
             }
-            if (freeQuantityInput) freeQuantityInput.value = 0;
-            wrapper.dataset.availableQuantity = 0;
-            if (availableQuantityDisplay) availableQuantityDisplay.textContent = '';
-            const existingWarning = wrapper.querySelector('.qty-warning');
-            if (existingWarning) existingWarning.remove();
-        } else {
-            if (quantityInput) quantityInput.disabled = true;
-        }
+        });
+        $(wrapper).find('.pack-select').select2({ theme: 'bootstrap-5', placeholder: 'Select pack', allowClear: true });
+        $(wrapper).find('.batch-number-select').select2({ theme: 'bootstrap-5', placeholder: 'Select batch', allowClear: true });
 
-        if (salePriceInput) salePriceInput.disabled = true;
-        if (discountInput) discountInput.disabled = true;
-    }
+        clearAndDisable(wrapper, '.pack-select');
+        clearAndDisable(wrapper, '.batch-number-select');
 
-    // --- Initialize Row (Sets up Select2 and event listeners for a new/existing row) ---
- function initializeRow(wrapper) {
-    const medicineNameSelect = $(wrapper).find('.medicine-name-select');
-    const packSelect = $(wrapper).find('.pack-select');
-    const batchSelect = $(wrapper).find('.batch-number-select');
-    const removeBtn = wrapper.querySelector('.remove-new-item');
-    const quantityInput = wrapper.querySelector('.quantity-input');
-    const freeQuantityInput = wrapper.querySelector('.free-qty-input');
-    const salePriceInput = wrapper.querySelector('.sale-price-input');
-    const discountInput = wrapper.querySelector('.discount-percentage-input');
-    const packInputHidden = wrapper.querySelector('.pack-input');
-    const availableQuantityDisplay = wrapper.querySelector('.available-quantity');
-    const extraDiscountCheckbox = wrapper.querySelector('.extra-discount-checkbox');
-    const appliedExtraDiscountInput = wrapper.querySelector('.applied-extra-discount-percentage');
+        $(wrapper).find('.medicine-name-select').on('select2:select', function (e) {
+            const selectedData = e.params.data.original_data;
+            resetItemDetails(wrapper);
+            if (selectedData && selectedData.packs && selectedData.packs.length > 0) {
+                const packSelect = $(wrapper).find('.pack-select');
+                packSelect.prop('disabled', false).append(new Option('', ''));
+                selectedData.packs.forEach(pack => {
+                    const option = new Option(pack.text, pack.medicine_id);
+                    $(option).data('pack-name', pack.pack);
+                    packSelect.append(option);
+                });
+                if (selectedData.packs.length === 1) {
+                    const pack = selectedData.packs[0];
+                    packSelect.val(pack.medicine_id).trigger('change');
+                    packSelect.trigger({
+                        type: 'select2:select',
+                        params: { data: { id: pack.medicine_id, text: pack.text, element: packSelect.find(`option[value="${pack.medicine_id}"]`)[0] } }
+                    });
+                } else {
+                    packSelect.trigger('change').select2('open');
+                }
+            }
+        });
 
-    // --- Ensure checkbox & hidden field are in sync on load ---
-    if (extraDiscountCheckbox && appliedExtraDiscountInput) {
-        appliedExtraDiscountInput.value = extraDiscountCheckbox.checked
-            ? EXTRA_DISCOUNT_PERCENTAGE.toFixed(2)
-            : parseFloat(0).toFixed(2);
-    }
+        $(wrapper).find('.pack-select').on('select2:select', function (e) {
+            const medicineId = e.params.data.id;
+            if (!medicineId) return;
+            const packName = $(e.params.data.element).data('pack-name') || e.params.data.text;
+            wrapper.querySelector('.medicine-id-input').value = medicineId;
+            wrapper.querySelector('.pack-name-hidden').value = packName;
+            fetchBatches(medicineId, wrapper, null);
+        });
 
-    const packContainer = wrapper.querySelector('.pack-selector-container');
+        $(wrapper).find('.batch-number-select').on('select2:select', function (e) {
+            const data = $(e.params.data.element).data('batch-data');
+            if (data) populateBatchDetails(wrapper, data);
+        });
 
-    // Select2 setup
-    medicineNameSelect.select2({
-        theme: 'bootstrap-5',
-        placeholder: 'Search for medicine...',
-        allowClear: true,
-        ajax: {
-            url: medicineSearchUrl,
-            dataType: 'json',
-            delay: 250,
-            data: params => ({ q: params.term }),
-            processResults: data => ({ results: data }),
-            cache: true
-        }
-    });
-
-    packSelect.select2({ theme: 'bootstrap-5', placeholder: 'Select pack...', allowClear: true }).prop('disabled', true);
-    batchSelect.select2({ theme: 'bootstrap-5', placeholder: 'Select batch...', allowClear: true }).prop('disabled', true);
-
-    // Remove button
-    if (removeBtn) {
-        removeBtn.addEventListener('click', () => {
-            const deletedInput = document.getElementById('deleted_items');
-            if (deletedInput && wrapper.dataset.itemId) {
-                deletedInput.value += (deletedInput.value ? ',' : '') + wrapper.dataset.itemId;
+        wrapper.querySelector('.remove-new-item').addEventListener('click', () => {
+            const existingId = wrapper.dataset.itemId;
+            const isExisting = wrapper.dataset.existingItem === 'true';
+            if (isExisting && existingId) {
+                const deletedField = document.getElementById('deleted_items');
+                let current = deletedField.value ? deletedField.value.split(',') : [];
+                if (!current.includes(existingId)) current.push(existingId);
+                deletedField.value = current.join(',');
             }
             wrapper.remove();
             calculateTotals();
         });
-    }
 
-    // Quantity & discount input listeners
-    wrapper.querySelectorAll('.item-calc').forEach(el => el.addEventListener('input', calculateTotals));
-
-    // --- Checkbox change listener ---
-    if (extraDiscountCheckbox) {
-        extraDiscountCheckbox.addEventListener('change', () => {
-            if (appliedExtraDiscountInput) {
-                appliedExtraDiscountInput.value = extraDiscountCheckbox.checked
-                    ? EXTRA_DISCOUNT_PERCENTAGE.toFixed(2)
-                    : parseFloat(0).toFixed(2);
-            }
-            calculateTotals();
+        wrapper.querySelectorAll('.item-calc, .extra-discount-checkbox').forEach(el => {
+            el.addEventListener('input', calculateTotals);
+            el.addEventListener('change', calculateTotals);
+        });
+        wrapper.querySelector('.quantity-input').addEventListener('input', e => {
+            const availableQty = parseFloat(wrapper.getAttribute('data-available-quantity') || 0);
+            validateQuantity(e.target, availableQty);
         });
     }
 
-    // Medicine selection
-    medicineNameSelect.on('select2:select', e => {
-        const medicineId = e.params.data.id;
-        const medicinePack = e.params.data.pack;
-
-        const medicineIdInput = wrapper.querySelector('.medicine-id-input');
-        if (medicineIdInput) medicineIdInput.value = medicineId;
-
-        const packSelectElement = wrapper.querySelector('.pack-select');
-        const packInputHidden = wrapper.querySelector('.pack-input');
-
-        $(packSelectElement).empty().prop('disabled', false);
-        if (packInputHidden) packInputHidden.value = '';
-        if (packContainer) packContainer.style.display = 'none';
-
-        if (medicinePack) {
-            $(packSelectElement).append(new Option(medicinePack, medicineId, true, true)).trigger('change');
-            if (packInputHidden) packInputHidden.value = medicinePack;
-        } else {
-            $(packSelectElement).append(new Option('N/A Pack', medicineId, true, true)).trigger('change');
-            if (packInputHidden) packInputHidden.value = '';
-        }
-        $(packSelectElement).prop('disabled', true);
-
-        fetchBatches(medicineId, wrapper, null);
-        batchSelect.empty().trigger('change').prop('disabled', true);
-
-        resetItemDetails(wrapper, false);
-        calculateTotals();
-    });
-
-    medicineNameSelect.on('select2:clear', () => {
-        if (packContainer) packContainer.style.display = 'block';
-        packSelect.empty().trigger('change').prop('disabled', true);
-        batchSelect.empty().trigger('change').prop('disabled', true);
-        if (packInputHidden) packInputHidden.value = '';
-        resetItemDetails(wrapper);
-        calculateTotals();
-    });
-
-    // Pack selection
-    packSelect.on('select2:select', e => {
-        if (packInputHidden) packInputHidden.value = e.params.data.text;
-        fetchBatches(e.params.data.id, wrapper, null);
-    });
-
-    packSelect.on('select2:clear', () => {
-        batchSelect.empty().trigger('change').prop('disabled', true);
-        if (packInputHidden) packInputHidden.value = '';
-        resetItemDetails(wrapper);
-        calculateTotals();
-    });
-
-    // Batch selection
-    batchSelect.on('select2:select', e => {
-        const data = $(e.params.data.element).data('batch-data');
-        if (data) {
-            populateBatchDetails(wrapper, data);
-            if (quantityInput) quantityInput.disabled = false;
-            if (salePriceInput) salePriceInput.disabled = false;
-            if (discountInput) discountInput.disabled = false;
-            if (quantityInput) quantityInput.setAttribute('max', data.quantity);
-            if (availableQuantityDisplay) availableQuantityDisplay.textContent = `Available: ${data.quantity}`;
-        }
-    });
-
-    // Quantity & Free Quantity listeners
-    if (quantityInput) quantityInput.addEventListener('input', () => validateQuantity(quantityInput));
-    if (freeQuantityInput) freeQuantityInput.addEventListener('input', calculateTotals);
-}
-
-    // --- Validation for pack selection (remains the same) ---
-    function validateRow(wrapper) {
-        const errors = [];
-        const packSelect = $(wrapper).find('.pack-select');
-        const medicineIdInput = wrapper.querySelector('.medicine-id-input'); // Explicit query
-        const medicineId = medicineIdInput ? medicineIdInput.value : ''; // Null check
-
-        if (medicineId && !packSelect.prop('disabled') && packSelect.find('option').length > 0 && !packSelect.val()) {
-            errors.push("Pack not selected");
-        }
-        return errors;
-    }
-
-    // --- Add new item to the form dynamically ---
-function addItem(initialData = {}) {
-    if (!template) {
-        console.error('The sale_item_template was not found!');
-        return;
-    }
-
-    // Clone template and replace placeholders
-    const clone = template.content.cloneNode(true);
-    let content = new XMLSerializer().serializeToString(clone);
-
-    // Unique prefix for name attributes (CRITICAL)
-    const uniquePrefix = initialData.id ? `existing_sale_items[${initialData.id}]` : `new_sale_items[${itemCount}]`;
-    content = content.replace(/__PREFIX__/g, uniquePrefix);
-    
-    // Replace index for element IDs
-    content = content.replace(/__INDEX__/g, itemCount);
-
-    // Append to container
-    const newWrapper = document.createElement('div');
-    newWrapper.innerHTML = content;
-    const newElement = newWrapper.firstElementChild;
-    container.appendChild(newElement);
-
-    // Mark element with item ID if editing
-    if (initialData.id) newElement.dataset.itemId = initialData.id;
-
-    // Initialize row JS (Select2, listeners, etc.)
-    initializeRow(newElement);
-
-    if (Object.keys(initialData).length > 0) {
-        // Medicine select
-        const nameSelect = $(newElement).find('.medicine-name-select');
-        if (initialData.medicine_id && (initialData.medicine_text || initialData.medicine_name)) {
-            const option = new Option(initialData.medicine_text || initialData.medicine_name, initialData.medicine_id, true, true);
-            nameSelect.append(option).trigger('change');
-        }
-
-        // Hidden medicine_id
-        const medicineIdInput = newElement.querySelector('.medicine-id-input');
-        if (medicineIdInput) medicineIdInput.value = initialData.medicine_id || '';
-
-        // Pack input (text, not select)
-        const packInput = newElement.querySelector('.pack-input');
-        if (packInput) packInput.value = initialData.pack || '';
-
-        // Batch & expiry
-        if (newElement.querySelector('[name$="[batch_number]"]')) newElement.querySelector('[name$="[batch_number]"]').value = initialData.batch_number || '';
-        if (newElement.querySelector('[name$="[expiry_date]"]')) newElement.querySelector('[name$="[expiry_date]"]').value = initialData.expiry_date || '';
-
-        // Quantities
-        if (newElement.querySelector('[name$="[quantity]"]')) newElement.querySelector('[name$="[quantity]"]').value = parseFloat(initialData.quantity || 0).toFixed(2);
-        if (newElement.querySelector('[name$="[free_quantity]"]')) newElement.querySelector('[name$="[free_quantity]"]').value = parseFloat(initialData.free_quantity || 0).toFixed(2);
-
-        // Prices & discounts
-        if (newElement.querySelector('[name$="[sale_price]"]')) newElement.querySelector('[name$="[sale_price]"]').value = parseFloat(initialData.sale_price || 0).toFixed(2);
-        if (newElement.querySelector('[name$="[discount_percentage]"]')) newElement.querySelector('[name$="[discount_percentage]"]').value = parseFloat(initialData.discount_percentage || 0).toFixed(2);
-
-        // Extra discount checkbox & value
-        const extraDiscountCheckbox = newElement.querySelector('.extra-discount-checkbox');
-        const appliedExtraDiscountInput = newElement.querySelector('.applied-extra-discount-percentage');
-        if (extraDiscountCheckbox) extraDiscountCheckbox.checked = !!initialData.is_extra_discount_applied;
-        if (appliedExtraDiscountInput) appliedExtraDiscountInput.value = parseFloat(initialData.applied_extra_discount_percentage || 0).toFixed(2);
-
-        // GST & PTR
-        if (newElement.querySelector('[name$="[gst_rate]"]')) newElement.querySelector('[name$="[gst_rate]"]').value = parseFloat(initialData.gst_rate || 0).toFixed(2);
-        if (newElement.querySelector('[name$="[ptr]"]')) newElement.querySelector('[name$="[ptr]"]').value = initialData.ptr || '';
-
-        // Available quantity for edit mode
-        if (isEditMode) {
-            newElement.dataset.availableQuantity = parseFloat(initialData.available_quantity || initialData.quantity || 0);
-            const qtyDisplay = newElement.querySelector('.available-quantity');
-            if (qtyDisplay) qtyDisplay.textContent = `Available: ${newElement.dataset.availableQuantity}`;
-            const qtyInput = newElement.querySelector('.quantity-input');
-            if (qtyInput) qtyInput.setAttribute('max', newElement.dataset.availableQuantity);
-        }
-
-    } else {
-        // New empty row: open Select2 immediately
-        $(newElement).find('.medicine-name-select').select2('open');
-    }
-
-    itemCount++;
-    calculateTotals();
-}
-
-    // --- fetchBatches function (Unified for Create and Edit) ---
-    // Pass selectedBatch to pre-select if loading an existing item
     function fetchBatches(medicineId, wrapper, selectedBatch = null) {
         const batchSelect = $(wrapper).find('.batch-number-select');
-
-        batchSelect.empty().trigger('change').prop('disabled', true);
-        resetItemDetails(wrapper, false); // Don't reset quantity here; populateBatchDetails will handle true value
-
-        batchSelect.append(new Option('Loading batches...', '', false, false)).trigger('change');
-
+        clearAndDisable(wrapper, '.batch-number-select');
         let url = batchApiUrlBase.replace('PLACEHOLDER', medicineId);
-
-        if (isEditMode && saleId) {
-            url += `?sale_id=${saleId}`;
-        }
+        if (isEditMode && saleId) url += `?sale_id=${saleId}`;
 
         fetch(url)
-            .then(res => {
-                return res.ok ? res.json() : Promise.reject(res.statusText);
-            })
+            .then(res => res.ok ? res.json() : Promise.reject(res.statusText))
             .then(batches => {
-                batchSelect.empty();
-
                 if (batches.length === 0) {
                     batchSelect.append(new Option('No stock available', '', true, true)).trigger('change');
-                    resetItemDetails(wrapper);
-                    calculateTotals();
                     return;
                 }
-
-                // --- START MODIFICATION: Batch Sorting Logic ---
-                batches.sort(function(a, b) {
-                    const expiryA = a.expiry_date ? new Date(a.expiry_date) : null;
-                    const expiryB = b.expiry_date ? new Date(b.expiry_date) : null;
-
-                    // Prioritize batches with actual expiry dates over null ones
-                    if (expiryA === null && expiryB !== null) return 1; // 'a' is null, 'b' (valid) comes first
-                    if (expiryA !== null && expiryB === null) return -1; // 'a' (valid) comes first, 'b' (null) comes after
-
-                    // If both are null, sort by batch number (alphanumeric, simulates "oldest by ID")
-                    if (expiryA === null && expiryB === null) {
-                        return (a.batch_number || '').localeCompare(b.batch_number || '');
-                    }
-
-                    // For valid expiry dates, sort by nearest date (ascending order)
-                    return expiryA.getTime() - expiryB.getTime();
-                });
-                // --- END MODIFICATION: Batch Sorting Logic ---
-
-                let initialBatchValue = null;
-                let initialBatchData = null;
-
-                // 1. Try to pre-select the batch if 'selectedBatch' is provided (from populateRow, for existing sale items)
-                if (selectedBatch) {
-                    const preselectedBatch = batches.find(batch => batch.batch_number === selectedBatch);
-                    if (preselectedBatch) {
-                        initialBatchValue = preselectedBatch.batch_number;
-                        initialBatchData = preselectedBatch;
-                    }
-                }
-
-                // 2. If no specific batch was pre-selected, determine the default for new items or re-selection
-                if (!initialBatchValue) {
-                    // For new sale items or when re-selecting, find the first available batch with quantity > 0
-                    const firstAvailableBatch = batches.find(batch => batch.quantity > 0);
-                    if (firstAvailableBatch) {
-                        initialBatchValue = firstAvailableBatch.batch_number;
-                        initialBatchData = firstAvailableBatch;
-                    } else if (batches.length > 0) {
-                        // If no batch has quantity > 0 but there are batches, select the first one in the sorted list (might have 0 qty)
-                        initialBatchValue = batches[0].batch_number;
-                        initialBatchData = batches[0];
-                    }
-                }
-
-                // Populate the dropdown with all sorted batches
-                batches.forEach((batch) => {
-                    const expiry = batch.expiry_date ? new Date(batch.expiry_date).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' }) : 'N/A';
-                    let text = `${batch.batch_number} (Avl: ${batch.quantity}, Exp: ${expiry})`;
-
-                    if (isEditMode && batch.existing_sale_item) {
-                        text += ` (Sold: ${batch.existing_sale_item.quantity}, Free: ${batch.existing_sale_item.free_quantity})`;
-                    }
-
+                batches.sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
+                let preselectedBatchData = null;
+                batches.forEach(batch => {
+                    const expiry = batch.expiry_date ? new Date(batch.expiry_date).toLocaleDateString('en-IN') : 'N/A';
+                    const text = `${batch.batch_number} (Avl: ${batch.quantity}, Exp: ${expiry})`;
                     const option = new Option(text, batch.batch_number);
-                    $(option).data('batch-data', batch); // Store full batch data for later use
+                    $(option).data('batch-data', batch);
                     batchSelect.append(option);
+                    if (selectedBatch && batch.batch_number === selectedBatch) preselectedBatchData = batch;
                 });
-
-                batchSelect.prop('disabled', false);
-
-                // Finally, set the selected value and trigger change to populate details
-                if (initialBatchValue) {
-                    batchSelect.val(initialBatchValue).trigger('change');
+                batchSelect.prop('disabled', false).trigger('change');
+                const batchToSelect = preselectedBatchData || batches.find(b => b.quantity > 0) || batches[0];
+                if (batchToSelect) {
+                    batchSelect.val(batchToSelect.batch_number).trigger('change');
                     batchSelect.trigger({
                         type: 'select2:select',
-                        params: {
-                            data: {
-                                id: initialBatchValue,
-                                element: batchSelect.find(`option[value="${initialBatchValue}"]`)[0]
-                            }
-                        }
+                        params: { data: { element: batchSelect.find(`option[value="${batchToSelect.batch_number}"]`)[0] } }
                     });
-                } else {
-                    // If no initialBatchValue could be determined (e.g., no batches at all, or all batches have 0 quantity and it's a new sale)
-                    batchSelect.append(new Option('No usable stock', '', true, true)).trigger('change');
-                    batchSelect.prop('disabled', true);
-                    resetItemDetails(wrapper); // Fully reset if no usable stock
                 }
-                calculateTotals(); // Recalculate totals after batch selection (or reset)
             })
             .catch(err => {
-                console.error("Error fetching batches:", err);
+                console.error("Fetch batches failed:", err);
                 batchSelect.empty().append(new Option('Error loading batches', '', true, true)).trigger('change');
-                batchSelect.prop('disabled', true);
-                resetItemDetails(wrapper);
-                calculateTotals();
             });
     }
 
-    
-    // --- Populates input fields of a sale item row with batch-specific data (after batch selection) ---
     function populateBatchDetails(wrapper, data) {
-    const salePriceInput = wrapper.querySelector('.sale-price-input');
-    const mrpInputDisplay = wrapper.querySelector('.mrp-input');
-    const gstPercentDisplay = wrapper.querySelector('.gst-percent-input');
-    const gstRateInputHidden = wrapper.querySelector('.gst-rate-input');
-    const expiryDateInput = wrapper.querySelector('.expiry-date-input');
-    const ptrInputHidden = wrapper.querySelector('.mrp-input-hidden');
-    const availableQuantityDisplay = wrapper.querySelector('.available-quantity');
-    const quantityInput = wrapper.querySelector('.quantity-input');
-    const freeQuantityInput = wrapper.querySelector('.free-qty-input');
-    const discountInput = wrapper.querySelector('.discount-percentage-input');
-    const extraDiscountCheckbox = wrapper.querySelector('.extra-discount-checkbox');
-    const appliedExtraDiscountInput = wrapper.querySelector('.applied-extra-discount-percentage');
+        wrapper.querySelector('.sale-price-input').value = parseFloat(data.sale_price || 0).toFixed(2);
+        wrapper.querySelector('.mrp-input').value = data.ptr || 'N/A';
+        wrapper.querySelector('.gst-rate-input').value = parseFloat(data.gst || 0).toFixed(2);
+        wrapper.querySelector('.gst-percent-input').value = `${parseFloat(data.gst || 0).toFixed(2)}%`;
+        wrapper.querySelector('.expiry-date-input').value = data.expiry_date;
+        wrapper.querySelector('.mrp-input-hidden').value = data.ptr || '';
 
-    if (salePriceInput) salePriceInput.value = parseFloat(data.sale_price || 0).toFixed(2);
-    if (mrpInputDisplay) mrpInputDisplay.value = data.ptr || 'N/A';
-    if (gstRateInputHidden) gstRateInputHidden.value = parseFloat(data.gst || 0).toFixed(2); // Use data.gst
-    if (gstPercentDisplay) gstPercentDisplay.value = `${parseFloat(data.gst || 0).toFixed(2)}%`; // Use data.gst
-    if (expiryDateInput) expiryDateInput.value = data.expiry_date ? new Date(data.expiry_date).toISOString().split('T')[0] : '';
-    if (ptrInputHidden) ptrInputHidden.value = data.ptr || '';
-
-    // --- CRITICAL FIX START: Calculate effective available quantity ---
-    let effectiveAvailableQuantity = parseFloat(data.quantity); // Start with current physical stock from API
-
-    // If in edit mode AND this batch was part of the sale being edited,
-    // add its original sold quantity back to the "available" pool for THIS transaction.
-    if (isEditMode && data.existing_sale_item) {
-        effectiveAvailableQuantity += (parseFloat(data.existing_sale_item.quantity || 0) + parseFloat(data.existing_sale_item.free_quantity || 0));
-    }
-    // --- CRITICAL FIX END ---
-
-    wrapper.dataset.availableQuantity = effectiveAvailableQuantity; // Store effective available quantity
-    if (availableQuantityDisplay) availableQuantityDisplay.textContent = `Available: ${effectiveAvailableQuantity}`;
-
-    if (data.existing_sale_item) {
-        // If it's an existing sale item, pre-fill quantity and free_quantity with its original values
-        if (quantityInput) quantityInput.value = parseFloat(data.existing_sale_item.quantity ?? 0).toFixed(2);
-        if (freeQuantityInput) freeQuantityInput.value = parseFloat(data.existing_sale_item.free_quantity ?? 0).toFixed(2);
-        
-        // Use existing_sale_item's sale_price/discount if they could be different from PBI's (common in edits)
-        if (salePriceInput) salePriceInput.value = parseFloat(data.existing_sale_item.sale_price || 0).toFixed(2);
-        if (discountInput) discountInput.value = parseFloat(data.existing_sale_item.discount_percentage || 0);
-
-        if (extraDiscountCheckbox && appliedExtraDiscountInput) {
-            extraDiscountCheckbox.checked = !!data.existing_sale_item.is_extra_discount_applied;
-            // Use the *actual* applied percentage from existing_sale_item for consistency, not the constant
-            appliedExtraDiscountInput.value = parseFloat(data.existing_sale_item.applied_extra_discount_percentage || 0).toFixed(2);
+        let effectiveAvailable = parseFloat(data.quantity);
+        if (isEditMode && data.existing_sale_item) {
+            effectiveAvailable += parseFloat(data.existing_sale_item.quantity || 0) + parseFloat(data.existing_sale_item.free_quantity || 0);
+            wrapper.querySelector('.quantity-input').value = parseFloat(data.existing_sale_item.quantity || 0).toFixed(2);
+        } else {
+            wrapper.querySelector('.quantity-input').value = '1.00';
         }
-    } else {
-        // For new items or if no existing_sale_item is found (e.g., just selecting an available batch)
-        if (quantityInput) {
-            // Default to 1 if stock is available and current input is 0, else 0
-            if (parseInt(quantityInput.value, 10) === 0 && effectiveAvailableQuantity > 0) { // Use effective
-                quantityInput.value = 1;
-            } else if (effectiveAvailableQuantity === 0) { // Use effective
-                quantityInput.value = 0;
-            }
-        }
-        if (freeQuantityInput) freeQuantityInput.value = 0;
-        if (discountInput) discountInput.value = 0;
-        if (extraDiscountCheckbox) extraDiscountCheckbox.checked = false;
-        if (appliedExtraDiscountInput) appliedExtraDiscountInput.value = parseFloat(0).toFixed(2);
-    }
 
-    if (quantityInput) quantityInput.disabled = false;
-    if (salePriceInput) salePriceInput.disabled = false;
-    if (discountInput) discountInput.disabled = false;
-    if (quantityInput) quantityInput.setAttribute('max', effectiveAvailableQuantity); // Set max based on effective available
-
-    validateQuantity(quantityInput);
-    calculateTotals();
-}
-    // --- Populates an entire row with existing data (used when loading an edit form or old input) ---
-    function populateRow(wrapper, data) {
-        const medicineNameSelect = $(wrapper).find('.medicine-name-select');
-        const packSelect = $(wrapper).find('.pack-select');
-        const batchSelect = $(wrapper).find('.batch-number-select');
-        
-        // MODIFIED: Replaced optional chaining for assignment with explicit null checks
-         const idInput = wrapper.querySelector('input[name*="[id]"]');
-        if (idInput) idInput.value = data.id;
-              const medicineIdInput = wrapper.querySelector('.medicine-id-input'); // Get the hidden input element
-        if (medicineIdInput) { // Check if it exists
-            medicineIdInput.value = data.medicine_id ?? ''; // Set its value from data
-        }
         const quantityInput = wrapper.querySelector('.quantity-input');
-        const freeQuantityInput = wrapper.querySelector('.free-qty-input');
-        const salePriceInput = wrapper.querySelector('.sale-price-input');
-        const discountInput = wrapper.querySelector('.discount-percentage-input');
-        const packInputHidden = wrapper.querySelector('.pack-input');
-        const mrpInputDisplay = wrapper.querySelector('.mrp-input');
-        const gstPercentDisplay = wrapper.querySelector('.gst-percent-input');
-        const expiryDateInput = wrapper.querySelector('.expiry-date-input');
-        const gstRateInputHidden = wrapper.querySelector('.gst-rate-input');
-        const ptrInputHidden = wrapper.querySelector('.mrp-input-hidden');
-        const availableQuantityDisplay = wrapper.querySelector('.available-quantity');
-        const extraDiscountCheckbox = wrapper.querySelector('.extra-discount-checkbox');
-        const appliedExtraDiscountInput = wrapper.querySelector('.applied-extra-discount-percentage');
-
-        if (quantityInput) quantityInput.value = data.quantity ?? 0;
-        if (freeQuantityInput) freeQuantityInput.value = data.free_quantity ?? 0;
-        if (salePriceInput) salePriceInput.value = parseFloat(data.sale_price || 0).toFixed(2);
-        if (discountInput) discountInput.value = data.discount_percentage || 0;
-
-        if (gstRateInputHidden) gstRateInputHidden.value = data.gst_rate || 0;
-        if (expiryDateInput) expiryDateInput.value = data.expiry_date ? new Date(data.expiry_date).toISOString().split('T')[0] : '';
-        if (ptrInputHidden) ptrInputHidden.value = data.ptr || '';
-        if (packInputHidden) packInputHidden.value = data.pack || '';
-
-        if (mrpInputDisplay) mrpInputDisplay.value = data.ptr || 'N/A';
-        if (gstPercentDisplay) gstPercentDisplay.value = `${data.gst_rate || 0}%`;
-
-   if (extraDiscountCheckbox && appliedExtraDiscountInput) {
-            appliedExtraDiscountInput.value = extraDiscountCheckbox.checked
-                ? EXTRA_DISCOUNT_PERCENTAGE.toFixed(2)
-                : parseFloat(0).toFixed(2);
-        }
-
-        if (quantityInput) quantityInput.disabled = false;
-        if (salePriceInput) salePriceInput.disabled = false;
-        if (discountInput) discountInput.disabled = false;
-
-        wrapper.dataset.availableQuantity = data.available_quantity || data.quantity || 0;
-        if (quantityInput) quantityInput.setAttribute('max', wrapper.dataset.availableQuantity);
-        if (availableQuantityDisplay) availableQuantityDisplay.textContent = `Available: ${wrapper.dataset.availableQuantity}`;
-
-        if (data.medicine_id && data.medicine_name) {
-            const medicineOption = new Option(data.medicine_name, data.medicine_id, true, true);
-            $(medicineOption).data('pack', data.pack);
-            medicineNameSelect.append(medicineOption).trigger('change');
-
-            if (data.pack) {
-                packSelect.prop('disabled', false)
-                    .append(new Option(data.pack, data.medicine_id, true, true))
-                    .val(data.medicine_id)
-                    .trigger('change.select2');
-            }
-
-            fetchBatches(data.medicine_id, wrapper, data.batch_number);
-        }
-        validateQuantity(quantityInput);
+        quantityInput.disabled = false;
+        quantityInput.setAttribute('max', effectiveAvailable);
+        wrapper.setAttribute('data-available-quantity', effectiveAvailable);
+        wrapper.querySelector('.available-quantity').textContent = `Available: ${effectiveAvailable}`;
+        validateQuantity(quantityInput, effectiveAvailable);
         calculateTotals();
     }
 
-    // --- Validates the entered quantity against available stock, and corrects it if over ---
-// This is the NEW, corrected function
-function validateQuantity(quantityInput) {
-    if (!quantityInput) return; // Guard clause for safety
-
-    const wrapper = quantityInput.closest('.sale-item-wrapper');
-    const available = parseFloat(wrapper.dataset.availableQuantity);
-    const requested = parseFloat(quantityInput.value);
-    const existingWarning = wrapper.querySelector('.qty-warning');
-
-    // Clear any old warning messages
-    if (existingWarning) existingWarning.remove();
-
-    // Do nothing if the input is not a valid number yet
-    if (isNaN(requested) || requested < 0) {
-        return;
-    }
-
-    // The core logic check
-    if (!isNaN(available) && requested > available) {
-        quantityInput.classList.add('is-invalid');
-        const warning = document.createElement('div');
-        warning.className = 'qty-warning text-danger small mt-1';
-        warning.textContent = `Stock limit for this batch is ${available}.`;
-        quantityInput.parentNode.appendChild(warning);
-        // We no longer automatically adjust the quantity. This prevents unexpected
-        // changes on the form. The final form submission validation will prevent saving.
-    } else {
+    function validateQuantity(quantityInput, available) {
+        if (!quantityInput) return;
         quantityInput.classList.remove('is-invalid');
+        const requested = parseFloat(quantityInput.value || 0);
+        if (isNaN(available) || requested > available) {
+            quantityInput.classList.add('is-invalid');
+        }
     }
-    
-    // Always recalculate totals after any validation check
-    calculateTotals();
-}
 
-    // --- Calculates and updates the subtotal, total GST, and grand total ---
     function calculateTotals() {
         let subtotal = 0;
         let totalGst = 0;
-
-        $('.sale-item-wrapper').each(function () {
-            const $row = $(this);
-
-            const qty = parseFloat($row.find('.quantity-input').val()) || 0;
-            const price = parseFloat($row.find('.sale-price-input').val()) || 0;
-            const discount = parseFloat($row.find('.discount-percentage-input').val()) || 0;
-            const gstRate = parseFloat($row.find('.gst-rate-input').val()) || 0;
-            const appliedExtraDiscount = parseFloat($row.find('.applied-extra-discount-percentage').val()) || 0;
-
+        document.querySelectorAll('.sale-item-wrapper').forEach(wrapper => {
+            const qty = parseFloat(wrapper.querySelector('.quantity-input').value) || 0;
+            if (qty === 0) {
+                wrapper.querySelector('.gst-amount-input').value = '0.00';
+                return;
+            }
+            const price = parseFloat(wrapper.querySelector('.sale-price-input').value) || 0;
+            const discount = parseFloat(wrapper.querySelector('.discount-percentage-input').value) || 0;
+            const gstRate = parseFloat(wrapper.querySelector('.gst-rate-input').value) || 0;
+            const extraDiscountChecked = wrapper.querySelector('.extra-discount-checkbox').checked;
+            const extraDiscount = extraDiscountChecked ? EXTRA_DISCOUNT_PERCENTAGE : 0;
+            wrapper.querySelector('.applied-extra-discount-percentage').value = extraDiscount.toFixed(2);
             let lineTotal = qty * price;
             lineTotal *= (1 - discount / 100);
-            lineTotal *= (1 - appliedExtraDiscount / 100);
-
-            const gstAmount = lineTotal * (gstRate / 100); // Corrected GST calculation
-
+            lineTotal *= (1 - extraDiscount / 100);
+            const gstAmount = lineTotal * (gstRate / 100);
             subtotal += lineTotal;
             totalGst += gstAmount;
-
-            $row.find('.gst-amount-input').val(gstAmount.toFixed(2));
+            wrapper.querySelector('.gst-amount-input').value = gstAmount.toFixed(2);
         });
-
-        const grandTotal = subtotal + totalGst;
-
-        $('#subtotal').text(subtotal.toFixed(2));
-        $('#total_gst').text(totalGst.toFixed(2));
-        $('#grand_total').text(grandTotal.toFixed(2));
+        document.getElementById('subtotal').textContent = subtotal.toFixed(2);
+        document.getElementById('total_gst').textContent = totalGst.toFixed(2);
+        document.getElementById('grand_total').textContent = Math.round(subtotal + totalGst).toFixed(2);
     }
 
-    // --- Initialization (Runs when the page first loads) ---
+    function addItem(initialData = {}) {
+        const prefix = initialData.id
+            ? `existing_sale_items[${initialData.id}]`
+            : `new_sale_items[${itemCount}]`;
+
+        const templateContent = template.innerHTML
+            .replace(/__INDEX__/g, itemCount)
+            .replace(/__PREFIX__/g, prefix);
+
+        const newWrapper = document.createElement('div');
+        newWrapper.classList.add('sale-item-wrapper');
+        newWrapper.innerHTML = templateContent;
+
+        if (initialData.itemId) {
+            newWrapper.dataset.itemId = initialData.itemId;
+        }
+
+        container.appendChild(newWrapper);
+        initializeRow(newWrapper);
+
+        if (Object.keys(initialData).length > 0) {
+            populateExistingRow(newWrapper, initialData);
+        } else {
+            $(newWrapper).find('.medicine-name-select').select2('open');
+        }
+
+        itemCount++;
+    }
+
+    function populateExistingRow(wrapper, data) {
+        const medicineId = data.medicineId || data.medicine_id;
+        if (!medicineId) return;
+
+        const medicineName = data.medicineName || data.medicine_name;
+        const packName = data.pack;
+        const batchNumber = data.batchNumber || data.batch_number;
+
+        wrapper.querySelector('.medicine-id-input').value = medicineId;
+        wrapper.querySelector('.pack-name-hidden').value = packName;
+        const medSelect = $(wrapper).find('.medicine-name-select');
+        medSelect.append(new Option(medicineName, medicineName, true, true)).trigger('change');
+        const packSelect = $(wrapper).find('.pack-select');
+        const packOption = new Option(packName, medicineId, true, true);
+        $(packOption).data('pack-name', packName);
+        packSelect.append(packOption).trigger('change').prop('disabled', false);
+        fetchBatches(medicineId, wrapper, batchNumber);
+    }
+
+    if (isEditMode) {
+        document.querySelectorAll('.sale-item-wrapper[data-existing-item="true"]').forEach(wrapper => {
+            initializeRow(wrapper);
+            populateExistingRow(wrapper, wrapper.dataset);
+        });
+    } else if (container.children.length === 0) {
+        addItem();
+    }
+
     addItemBtn.addEventListener('click', () => addItem());
 
-    if (window.oldInput && (window.oldInput.new_items || window.oldInput.existing_items)) {
-        const existingItems = Object.entries(window.oldInput.existing_items || {});
-        const newItems = Object.entries(window.oldInput.new_items || {});
-
-        // Handle old input for existing items, ensuring boolean conversion for is_extra_discount_applied
-        existingItems.forEach(([id, data]) => addItem({
-            ...data,
-            id,
-            // Correctly parse the string 'true'/'false' from old input to boolean
-            is_extra_discount_applied: String(data.is_extra_discount_applied).toLowerCase() === 'true',
-            applied_extra_discount_percentage: data.applied_extra_discount_percentage
-        }));
-        newItems.forEach(([, data]) => addItem(data));
-    } else if (document.querySelectorAll('.sale-item-wrapper').length === 0) {
-        addItem();
-    } else {
-        // This block is for existing sale items loaded directly from the database (first page load of edit form)
-        document.querySelectorAll('.sale-item-wrapper').forEach(wrapper => {
-            initializeRow(wrapper); // MODIFIED: Call initializeRow first to set up Select2 and listeners
-
-            const data = {
-                id: wrapper.dataset.itemId,
-                medicine_id: wrapper.dataset.medicineId,
-                medicine_name: wrapper.dataset.medicineName,
-                batch_number: wrapper.dataset.batchNumber,
-                quantity: wrapper.dataset.quantity,
-                free_quantity: wrapper.dataset.freeQuantity,
-                sale_price: wrapper.dataset.salePrice,
-                gst_rate: wrapper.dataset.gstRate,
-                discount_percentage: wrapper.dataset.discountPercentage,
-                ptr: wrapper.dataset.ptr,
-                pack: wrapper.dataset.pack,
-                // CRITICAL FIX: Read from data-attributes and convert string to boolean
-                is_extra_discount_applied: String(wrapper.dataset.isExtraDiscountApplied).toLowerCase() === 'true',
-                applied_extra_discount_percentage: wrapper.dataset.appliedExtraDiscountPercentage,
-            };
-            populateRow(wrapper, data); // Call populateRow with the converted data
-        });
-        calculateTotals();
-    }
-
-    // --- Form Submission Validation ---
     saleForm.addEventListener('submit', function (event) {
         let isValid = true;
-
-        document.querySelectorAll('.sale-item-wrapper').forEach((wrapper) => {
-            const medicineNameSelect = $(wrapper).find('.medicine-name-select');
-            const packSelect = $(wrapper).find('.pack-select');
-            const batchSelect = $(wrapper).find('.batch-number-select');
+        document.querySelectorAll('.sale-item-wrapper').forEach(wrapper => {
+            wrapper.classList.remove('border-danger');
+            let hasError = false;
+            if (!wrapper.querySelector('.medicine-id-input').value) hasError = true;
+            if (!wrapper.querySelector('.batch-number-select').value) hasError = true;
             const quantityInput = wrapper.querySelector('.quantity-input');
-
-            validateQuantity(quantityInput); // Ensure latest validation state
-
-            let errors = [];
-
-            if (!medicineNameSelect.find(':selected').val()) {
-                errors.push("Medicine name not selected");
-            }
-            // Only validate pack if the select is enabled and has options
-            if (!packSelect.prop('disabled') && packSelect.find('option').length > 1 && !packSelect.val()) {
-                errors.push("Pack not selected");
-            }
-
-
-            if (!batchSelect.find(':selected').val()) {
-                errors.push("Batch not selected");
-            }
-            if (quantityInput && quantityInput.classList.contains('is-invalid')) { // MODIFIED: Added null check
-                errors.push("Quantity marked invalid (red border)");
-            }
-            const qtyValue = parseFloat(quantityInput ? quantityInput.value : 0); // MODIFIED: Added null check
-            if (isNaN(qtyValue) || qtyValue < 0) {
-                errors.push(`Quantity is invalid: ${quantityInput ? quantityInput.value : 'N/A'}`); // MODIFIED: Added null check
-            }
-
-
-            if (errors.length > 0) {
+            if (parseFloat(quantityInput.value || 0) <= 0) hasError = true;
+            if (quantityInput.classList.contains('is-invalid')) hasError = true;
+            if (hasError) {
                 isValid = false;
-                wrapper.classList.add('border', 'border-danger', 'border-2');
-            } else {
-                wrapper.classList.remove('border', 'border-danger', 'border-2');
+                wrapper.classList.add('border-danger');
             }
         });
-
-        document.querySelectorAll('.extra-discount-checkbox').forEach(checkbox => {
-        const appliedInput = checkbox.closest('.sale-item').querySelector('.applied-extra-discount-percentage');
-        if (appliedInput) {
-            appliedInput.value = checkbox.checked ? "3.00" : "0.00";
-        }
-    });
-
         if (!isValid) {
             event.preventDefault();
-            alert('Please complete all item details and correct quantities before submitting.');
+            alert('Please fill all required fields for each item and ensure quantity is valid.');
         }
     });
 
-    // --- Debug Validation Function (for development/testing, not used in production flow) ---
-    function debugValidation() {
-        let globalErrors = [];
-        document.querySelectorAll('.sale-item-wrapper').forEach((wrapper, index) => {
-            const medicineNameSelect = $(wrapper).find('.medicine-name-select');
-            const packSelect = $(wrapper).find('.pack-select');
-            const batchSelect = $(wrapper).find('.batch-number-select');
-            const quantityInput = wrapper.querySelector('.quantity-input');
-
-            let itemErrors = [];
-            let itemIsValid = true;
-
-            // 1. Check Medicine Name Select2 value
-            if (!medicineNameSelect.val()) {
-                itemErrors.push('Medicine Name is not selected.');
-                itemIsValid = false;
-            }
-
-            // 2. Check Pack Select2 value
-            if (!packSelect.val()) {
-                itemErrors.push('Pack is not selected.');
-                itemIsValid = false;
-            }
-
-            // 3. Check Batch Select2 value
-            if (!batchSelect.val()) {
-                itemErrors.push('Batch is not selected.');
-                itemIsValid = false;
-            }
-
-            // 4. Check Quantity validity (is-invalid class)
-            if (quantityInput && quantityInput.classList.contains('is-invalid')) { // MODIFIED: Added null check
-                itemErrors.push('Quantity is invalid (red border, likely due to stock limit).');
-                itemIsValid = false;
-            }
-
-            // 5. Check Quantity value (< 1)
-            const currentQty = parseFloat(quantityInput ? quantityInput.value : 0); // MODIFIED: Added null check
-            if (isNaN(currentQty) || currentQty < 1) {
-                itemErrors.push(`Quantity value is ${currentQty}, which is less than 1 or not a number.`);
-                itemIsValid = false;
-            }
-
-            if (!itemIsValid) {
-                globalErrors.push(`Item ${index + 1} has errors: ${itemErrors.join('; ')}`);
-                wrapper.classList.add('border', 'border-danger', 'border-2');
-            } else {
-                wrapper.classList.remove('border', 'border-danger', 'border-2');
-            }
-        });
-
-        if (globalErrors.length > 0) {
-            return false;
-        } else {
-            return true;
-        }
+    if (isEditMode) {
+        calculateTotals();
     }
 });
