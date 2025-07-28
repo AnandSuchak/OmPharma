@@ -1,36 +1,36 @@
 <?php
 
+// File: app/Http/Controllers/InventoryController.php
+
 namespace App\Http\Controllers;
 
-use App\Models\Inventory;
 use App\Models\Medicine;
-use Illuminate\View\View;
+use App\Services\InventoryService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\View\View;
 
+/**
+ * Handles all HTTP requests for the Inventory module.
+ * Delegates all business logic to the InventoryService.
+ */
 class InventoryController extends Controller
 {
+    protected InventoryService $inventoryService;
+
+    /**
+     * Inject the InventoryService into the controller.
+     */
+    public function __construct(InventoryService $inventoryService)
+    {
+        $this->inventoryService = $inventoryService;
+    }
+
     /**
      * Display a listing of the inventory, grouped by medicine.
      */
     public function index(Request $request): View|\Illuminate\Http\Response
     {
-        $query = Inventory::query()
-            ->join('medicines', 'inventories.medicine_id', '=', 'medicines.id')
-            ->select(
-                'inventories.medicine_id',
-                'medicines.name', // Select the medicine name
-                'medicines.pack', // NEW: Select the pack
-                DB::raw('SUM(inventories.quantity) as total_quantity')
-            )
-            ->groupBy('inventories.medicine_id', 'medicines.name', 'medicines.pack') // NEW: Group by pack as well
-            ->orderBy('medicines.name', 'asc'); // Order alphabetically by name
-
-        if ($request->filled('search')) {
-            $query->where('medicines.name', 'like', '%' . $request->search . '%');
-        }
-
-        $inventories = $query->paginate(10);
+        $inventories = $this->inventoryService->getGroupedInventory($request->search);
 
         if ($request->ajax()) {
             return response()->view('inventories.partials.table', compact('inventories'));
@@ -41,18 +41,13 @@ class InventoryController extends Controller
 
     /**
      * Display the detailed inventory for a specific medicine.
+     * We use Route Model Binding to automatically fetch the Medicine model.
      */
     public function show(int $medicineId): View
     {
-        $inventoryDetails = Inventory::where('medicine_id', $medicineId)
-            ->with('medicine') // Eager load the medicine relationship to access its properties
-            ->orderBy('expiry_date')
-            ->get();
+        // The service returns an array with both 'inventoryDetails' and 'medicine' keys.
+        $data = $this->inventoryService->getInventoryDetailsForMedicine($medicineId);
 
-        // Get medicine details from the collection, or query if the collection is empty
-        // Accessing medicine from the first item in the collection is efficient.
-        $medicine = $inventoryDetails->first()->medicine ?? Medicine::findOrFail($medicineId);
-
-        return view('inventories.show', compact('inventoryDetails', 'medicine'));
+        return view('inventories.show', $data);
     }
 }

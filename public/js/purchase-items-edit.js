@@ -1,7 +1,7 @@
-//{{-- public/js/purchase-items.js --}}
+// public/js/purchase-items-edit.js
 
 document.addEventListener('DOMContentLoaded', function () {
-    console.log("Purchase items CREATE script initialized.");
+    console.log("Purchase items EDIT script initialized.");
 
     const container = document.getElementById('purchase_items_container');
     if (!container) {
@@ -12,23 +12,22 @@ document.addEventListener('DOMContentLoaded', function () {
     const addItemBtn = document.getElementById('add_new_item');
     const template = document.getElementById('purchase_item_template')?.content;
     const medicineSearchUrl = container.dataset.searchUrl;
-    let itemCount = 0;
+    const deletedItemsInput = document.getElementById('deleted_items');
+    let newItemCount = 0;
     let isManualMode = false;
 
-    // --- Element Selectors ---
+    // === Totals fields ===
     const subtotalInput = document.getElementById('subtotal_amount');
     const gstInput = document.getElementById('total_gst_amount');
     const totalInput = document.getElementById('total_amount');
     const extraDiscountInput = document.getElementById('extra_discount_amount');
-    const purchaseItemCountDisplay = document.getElementById('purchase_item_count_display');
     const originalGrandTotalInput = document.getElementById('original_grand_total_amount');
     const roundingOffInput = document.getElementById('rounding_off_amount');
+    const purchaseItemCountDisplay = document.getElementById('purchase_item_count_display');
 
-    // --- Helper Functions ---
     function updateItemCountDisplay() {
         const count = document.querySelectorAll('.purchase-item').length;
         if (purchaseItemCountDisplay) purchaseItemCountDisplay.textContent = count;
-        console.log(`Item count updated: ${count}`);
     }
 
     function calculateTotals() {
@@ -47,7 +46,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
             subtotal += afterDisc;
             totalGst += gst;
-            item.querySelector('.row-total')?.setAttribute('value', afterDisc.toFixed(2));
+
+            const rowTotalField = item.querySelector('.row-total');
+            if (rowTotalField) rowTotalField.value = afterDisc.toFixed(2);
         });
 
         const extraDiscount = parseFloat(extraDiscountInput?.value) || 0;
@@ -138,7 +139,22 @@ document.addEventListener('DOMContentLoaded', function () {
             ajax: { url: medicineSearchUrl, dataType: 'json', delay: 250, data: params => ({ q: params.term }), processResults: data => ({ results: data }) }
         });
 
+        const medicineSelect = $(wrapper).find('.medicine-name-select');
+        const selectedId = medicineSelect.data('selected-id');
+        const selectedText = medicineSelect.data('selected-text');
+        if (selectedId && selectedText) {
+            medicineSelect.append(new Option(selectedText, selectedId, true, true)).trigger('change');
+        }
+
         wrapper.querySelector('.remove-item')?.addEventListener('click', () => {
+            const itemId = wrapper.dataset.itemId;
+            if (itemId && deletedItemsInput) {
+                const deletedIds = deletedItemsInput.value ? deletedItemsInput.value.split(',') : [];
+                if (!deletedIds.includes(itemId)) {
+                    deletedIds.push(itemId);
+                    deletedItemsInput.value = deletedIds.join(',');
+                }
+            }
             wrapper.remove();
             calculateTotals();
             updateItemCountDisplay();
@@ -147,51 +163,17 @@ document.addEventListener('DOMContentLoaded', function () {
         wrapper.querySelectorAll('.item-calc').forEach(el => el.addEventListener('input', calculateTotals));
     }
 
-    function populateItemRow(newElement, data) {
-        console.log("Populating item row with data:", data);
-        const nameSelect = $(newElement).find('.medicine-name-select');
-        
-        if (data.medicine_id && data.medicine_name) {
-            nameSelect.append(new Option(data.medicine_name, data.medicine_id, true, true)).trigger('change');
-            
-            const nameInput = newElement.querySelector('.medicine-name-hidden-input');
-            const idInput = newElement.querySelector('.medicine-id-hidden-input');
-            if (nameInput) nameInput.value = data.medicine_name;
-            if (idInput) idInput.value = data.medicine_id;
-        }
-
-        Object.keys(data).forEach(key => {
-            const input = newElement.querySelector(`[name$="[${key}]"]`);
-            if (input) input.value = data[key] || '';
-        });
-        updateDiscountFields(newElement, 'percentage');
-    }
-
-    function addItem(data = {}) {
+    function addNewItem(data = {}) {
         if (!template) {
             console.error('CRITICAL: purchase_item_template not found!');
             return;
         }
-
         const newElement = template.cloneNode(true).firstElementChild;
-        newElement.innerHTML = newElement.innerHTML.replace(/__INDEX__/g, itemCount);
+        newElement.innerHTML = newElement.innerHTML.replace(/__INDEX__/g, `new_${newItemCount}`);
         container.appendChild(newElement);
         attachListeners(newElement);
 
-        if (Object.keys(data).length > 0) {
-            if (data.medicine_id && !data.medicine_name) {
-                console.warn(`Name missing for ID ${data.medicine_id}. Fetching from API...`);
-                fetch(`/api/medicines/${data.medicine_id}/details`)
-                    .then(response => response.json())
-                    .then(details => {
-                        data.medicine_name = details.name;
-                        populateItemRow(newElement, data);
-                    });
-            } else {
-                populateItemRow(newElement, data);
-            }
-        }
-        itemCount++;
+        newItemCount++;
         updateItemCountDisplay();
     }
 
@@ -230,19 +212,16 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!currentRow) return;
 
         const medicineIdInput = currentRow.querySelector('.medicine-id-hidden-input');
-        if (medicineIdInput) {
-            medicineIdInput.value = selectedPackId;
-            console.log(`Stored final medicine_id '${selectedPackId}' in hidden input.`);
-        }
+        if (medicineIdInput) medicineIdInput.value = selectedPackId;
         fetchGstForMedicine(selectedPackId, currentRow);
     });
 
-    if (addItemBtn) addItemBtn.addEventListener('click', () => addItem());
+    if (addItemBtn) addItemBtn.addEventListener('click', () => addNewItem());
 
-    if (window.oldPurchaseItems && window.oldPurchaseItems.length > 0) {
-        window.oldPurchaseItems.forEach(itemData => addItem(itemData));
-    } else {
-        addItem();
+    document.querySelectorAll('#purchase_items_container .purchase-item').forEach(wrapper => attachListeners(wrapper));
+
+    if (window.oldNewPurchaseItems && window.oldNewPurchaseItems.length > 0) {
+        window.oldNewPurchaseItems.forEach(itemData => addNewItem(itemData));
     }
 
     calculateTotals();

@@ -1,24 +1,48 @@
 <?php
 
+// File: app/Http/Controllers/CustomerController.php
+
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreCustomerRequest;
+use App\Http\Requests\UpdateCustomerRequest;
 use App\Models\Customer;
-use Illuminate\Http\Request;
-use Illuminate\View\View;
+use App\Services\CustomerService;
+use Exception;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\View\View;
 
 class CustomerController extends Controller
 {
-    /**
-     * Display a listing of customers.
-     */
-    public function index(): View
+    protected CustomerService $customerService;
+
+    public function __construct(CustomerService $customerService)
     {
-       $customers =Customer::withoutTrashed()->get();
-        return view('customers.index', compact('customers'));
+        $this->customerService = $customerService;
     }
 
+    /**
+     * Display a listing of the customers.
+     */
+    public function index(Request $request): View|JsonResponse
+    {
+        /** @var LengthAwarePaginator $customers */
+        $customers = $this->customerService->getAllCustomers($request->all());
+
+        if ($request->ajax()) {
+            return response()->json([
+                'html' => view('customers.partials.customer_table_rows', compact('customers'))->render(),
+                'pagination' => $customers->links('pagination::bootstrap-5')->toHtml(),
+            ]);
+        }
+
+        return view('customers.index', compact('customers'));
+    }
+    
     /**
      * Show the form for creating a new customer.
      */
@@ -29,18 +53,23 @@ class CustomerController extends Controller
 
     /**
      * Store a newly created customer in storage.
+     * Validation is now handled by the StoreCustomerRequest class.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(StoreCustomerRequest $request): RedirectResponse
     {
-        $validated = $this->validateCustomer($request);
-
-        Customer::create($validated);
-
-        return redirect()->route('customers.index')->with('success', 'Customer added successfully.');
+        try {
+            // The $request->validated() method returns only the data that passed validation.
+            $this->customerService->createCustomer($request->validated());
+            return redirect()->route('customers.index')->with('success', 'Customer created successfully.');
+        } catch (Exception $e) {
+            Log::error("Customer creation failed: " . $e->getMessage());
+            return back()->withInput()->withErrors(['error' => 'Failed to create customer.']);
+        }
     }
 
     /**
      * Display the specified customer.
+     * Laravel automatically finds the customer or throws a 404 error.
      */
     public function show(Customer $customer): View
     {
@@ -57,14 +86,17 @@ class CustomerController extends Controller
 
     /**
      * Update the specified customer in storage.
+     * Validation is now handled by the UpdateCustomerRequest class.
      */
-    public function update(Request $request, Customer $customer): RedirectResponse
+    public function update(UpdateCustomerRequest $request, Customer $customer): RedirectResponse
     {
-        $validated = $this->validateCustomer($request);
-
-        $customer->update($validated);
-
-        return redirect()->route('customers.index')->with('success', 'Customer updated successfully.');
+        try {
+            $this->customerService->updateCustomer($customer->id, $request->validated());
+            return redirect()->route('customers.index')->with('success', 'Customer updated successfully.');
+        } catch (Exception $e) {
+            Log::error("Customer update failed for ID {$customer->id}: " . $e->getMessage());
+            return back()->withInput()->withErrors(['error' => 'Failed to update customer.']);
+        }
     }
 
     /**
@@ -72,55 +104,25 @@ class CustomerController extends Controller
      */
     public function destroy(Customer $customer): RedirectResponse
     {
-        if ($customer->sales()->exists()) {
-            return back()->withErrors([
-                'error' => 'Cannot delete customer who has associated sales records.'
-            ]);
+        try {
+            $this->customerService->deleteCustomer($customer->id);
+            return redirect()->route('customers.index')->with('success', 'Customer deleted successfully.');
+        } catch (Exception $e) {
+            Log::error("Customer deletion failed for ID {$customer->id}: " . $e->getMessage());
+            return back()->withErrors(['error' => 'Failed to delete customer.']);
         }
-
-        $customer->delete();
-
-        return redirect()->route('customers.index')->with('success', 'Customer deleted successfully.');
     }
 
     /**
-     * Validate customer request and ensure at least one of GST or PAN is present.
-     */
-    protected function validateCustomer(Request $request): array
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'contact_number' => 'nullable|numeric',
-            'email' => 'nullable|email',
-            'address' => 'nullable|string',
-            'dln' => 'required|string',
-            'gst_number' => 'nullable|string',
-            'pan_number' => 'nullable|string',
-        ]);
-
-        if (empty($validated['gst_number']) && empty($validated['pan_number'])) {
-            throw ValidationException::withMessages([
-                'gst_number' => 'Please provide either GST Number or PAN Number.',
-                'pan_number' => '',
-            ]);
-        }
-
-        return $validated;
-    }
-
-      /**
      * Search for customers by name or phone for AJAX requests.
      */
-    public function search(Request $request)
+    public function search(Request $request): JsonResponse
     {
-        $query = $request->get('q');
-        $customers = \App\Models\Customer::where('name', 'LIKE', "%{$query}%")
-            ->orWhere('contact_number', 'LIKE', "%{$query}%")
-            ->limit(15)
-            ->get(['id', 'name']);
+        $customers = $this->customerService->searchCustomers($request->get('q'));
 
         $results = $customers->map(function ($customer) {
-            return ['id' => $customer->id, 'text' => $customer->name];
+            $text = $customer->name . ($customer->contact_number ? ' (' . $customer->contact_number . ')' : '');
+            return ['id' => $customer->id, 'text' => $text];
         });
 
         return response()->json($results);

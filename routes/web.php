@@ -72,5 +72,5 @@ Route::prefix('reports')->name('reports.')->group(function () {
 });
 
 
-
+Route::get('/medicines/{medicine}/details', [MedicineController::class, 'getMedicineDetails']);
 Route::get('/inventory-logs', [InventoryLogController::class, 'index'])->name('inventory_logs.index');

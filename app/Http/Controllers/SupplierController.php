@@ -2,57 +2,53 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Supplier;
+use App\Services\SupplierService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 
 class SupplierController extends Controller
 {
+    protected SupplierService $supplierService;
+
+    /**
+     * SupplierController constructor.
+     */
+    public function __construct(SupplierService $supplierService)
+    {
+        $this->supplierService = $supplierService;
+    }
+
     /**
      * Display a listing of the suppliers.
      */
- public function index(Request $request): View|\Illuminate\Http\JsonResponse // MODIFIED: Added JsonResponse return type
+    public function index(Request $request): View|\Illuminate\Http\JsonResponse
     {
-        $query = Supplier::latest();
+        $suppliers = $this->supplierService->getAllSuppliers($request->all());
 
-        // NEW: Handle search query from AJAX
-        if ($request->ajax() && $request->has('search')) {
-            $searchTerm = $request->input('search');
-            $query->where(function($q) use ($searchTerm) {
-                $q->where('name', 'like', "%{$searchTerm}%")
-                  ->orWhere('phone_number', 'like', "%{$searchTerm}%")
-                  ->orWhere('email', 'like', "%{$searchTerm}%")
-                  ->orWhere('address', 'like', "%{$searchTerm}%");
-            });
+        if (! $suppliers instanceof LengthAwarePaginator) {
+            Log::error('Unexpected type returned from SupplierService.');
+            return response()->json(['error' => 'An internal error occurred.'], 500);
         }
 
-        $suppliers = $query->paginate(15);
-
         if ($request->ajax()) {
-            // Return JSON response for AJAX requests
             return response()->json([
                 'html' => view('suppliers.partials.supplier_table_rows', compact('suppliers'))->render(),
-                'pagination' => $suppliers->links('pagination::bootstrap-5')->render()
-
+                // FIXED: Removed the extra ->render() call. The links() method already returns the rendered HTML.
+                'pagination' => $suppliers->links('pagination::bootstrap-5')
             ]);
         }
 
         return view('suppliers.index', compact('suppliers'));
     }
 
-    /**
-     * Show the form for creating a new supplier.
-     */
     public function create(): View
     {
         return view('suppliers.create');
     }
 
-    /**
-     * Store a newly created supplier in storage.
-     */
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
@@ -65,7 +61,7 @@ class SupplierController extends Controller
         ]);
 
         try {
-            Supplier::create($validated);
+            $this->supplierService->createSupplier($validated);
             return redirect()->route('suppliers.index')->with('success', 'Supplier created successfully.');
         } catch (\Throwable $e) {
             Log::error("Supplier creation failed: " . $e->getMessage());
@@ -73,38 +69,31 @@ class SupplierController extends Controller
         }
     }
 
-    /**
-     * Display the specified supplier.
-     */
-    public function show(Supplier $supplier): View
+    public function show(int $id): View
     {
+        $supplier = $this->supplierService->getSupplierById($id);
         return view('suppliers.show', compact('supplier'));
     }
 
-    /**
-     * Show the form for editing the specified supplier.
-     */
-    public function edit(Supplier $supplier): View
+    public function edit(int $id): View
     {
+        $supplier = $this->supplierService->getSupplierById($id);
         return view('suppliers.edit', compact('supplier'));
     }
 
-    /**
-     * Update the specified supplier in storage.
-     */
-    public function update(Request $request, Supplier $supplier): RedirectResponse
+    public function update(Request $request, int $id): RedirectResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'phone_number' => 'nullable|string|unique:suppliers,phone_number,' . $supplier->id,
-            'email' => 'nullable|email|unique:suppliers,email,' . $supplier->id,
-            'gst' => 'required|string|unique:suppliers,gst,' . $supplier->id,
+            'phone_number' => 'nullable|string|unique:suppliers,phone_number,' . $id,
+            'email' => 'nullable|email|unique:suppliers,email,' . $id,
+            'gst' => 'required|string|unique:suppliers,gst,' . $id,
             'address' => 'nullable|string',
-            'dln' => 'required|string|unique:suppliers,dln,' . $supplier->id,
+            'dln' => 'required|string|unique:suppliers,dln,' . $id,
         ]);
 
         try {
-            $supplier->update($validated);
+            $this->supplierService->updateSupplier($id, $validated);
             return redirect()->route('suppliers.index')->with('success', 'Supplier updated successfully.');
         } catch (\Throwable $e) {
             Log::error("Supplier update failed: " . $e->getMessage());
@@ -112,13 +101,10 @@ class SupplierController extends Controller
         }
     }
 
-    /**
-     * Remove the specified supplier from storage.
-     */
-    public function destroy(Supplier $supplier): RedirectResponse
+    public function destroy(int $id): RedirectResponse
     {
         try {
-            $supplier->delete();
+            $this->supplierService->deleteSupplier($id);
             return redirect()->route('suppliers.index')->with('success', 'Supplier deleted successfully.');
         } catch (\Throwable $e) {
             Log::error("Supplier deletion failed: " . $e->getMessage());
@@ -126,19 +112,14 @@ class SupplierController extends Controller
         }
     }
 
-        /**
-     * Search for suppliers by name for AJAX requests.
-     */
     public function search(Request $request)
     {
-        $query = $request->get('q');
-        $suppliers = \App\Models\Supplier::where('name', 'LIKE', "%{$query}%")
-            ->limit(15)
-            ->get(['id', 'name']);
+        $suppliers = $this->supplierService->searchSuppliersByName($request->get('q'));
 
-        $results = $suppliers->map(function ($supplier) {
-            return ['id' => $supplier->id, 'text' => $supplier->name];
-        });
+        $results = $suppliers->map(fn($supplier) => [
+            'id' => $supplier->id,
+            'text' => $supplier->name,
+        ]);
 
         return response()->json($results);
     }

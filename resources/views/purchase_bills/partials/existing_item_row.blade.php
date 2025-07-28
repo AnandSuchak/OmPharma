@@ -1,38 +1,28 @@
-<div class="card mb-3 purchase-item">
+{{-- resources/views/purchase_bills/partials/existing_item_row.blade.php --}}
+
+<div class="card mb-3 purchase-item" data-item-id="{{ $item->id }}">
     <div class="card-body">
-       {{-- This div now acts as the main wrapper for each purchase item --}}
         <div class="purchase-item row g-2 align-items-end mb-3 p-2 border rounded shadow-sm bg-white">
-            {{-- Hidden ID for existing items --}}
-            @if(isset($item))
-                <input type="hidden" name="{{ $prefix }}[id]" value="{{ $item->id }}">
-            @endif
-            <input type="hidden" class="medicine-id-input" name="{{ $prefix }}[medicine_id]" value="{{ old("{$prefix}.medicine_id", $item->medicine_id ?? '') }}">
-            <input type="hidden" class="pack-input" name="{{ $prefix }}[pack]" value="{{ old("{$prefix}.pack", $item->pack ?? '') }}">
-            <input type="hidden" class="gst-rate-input" name="{{ $prefix }}[gst_rate]" value="{{ old("{$prefix}.gst_rate", $item->gst_rate ?? '') }}">
-            <input type="hidden" class="mrp-input-hidden" name="{{ $prefix }}[ptr]" value="{{ old("{$prefix}.ptr", $item->ptr ?? '') }}">
+            
+            <input type="hidden" name="{{ $prefix }}[{{ $index }}][id]" value="{{ $item->id }}">
+
+            <input type="hidden" class="medicine-name-hidden-input" name="{{ $prefix }}[{{ $index }}][medicine_name]" value="{{ old($prefix.'.'.$index.'.medicine_name', $item->medicine->name ?? '') }}">
+            <input type="hidden" class="medicine-id-hidden-input" name="{{ $prefix }}[{{ $index }}][medicine_id]" value="{{ old($prefix.'.'.$index.'.medicine_id', $item->medicine_id) }}">
 
             {{-- Medicine Name --}}
             <div class="col-md-3 col-lg-2">
                 <label class="form-label small">Medicine Name:</label>
-                @php
-                    $selectedId = old($prefix . '.' . $index . '.medicine_id', $item->medicine_id ?? null);
-                    $selectedText = \App\Models\Medicine::find($selectedId)?->name;
-                @endphp
-                <select class="form-select medicine-name-select" name="{{ $prefix }}[{{ $index }}][medicine_id]" required>
-                    @if($selectedId && $selectedText)
-                        <option value="{{ $selectedId }}" selected>{{ $selectedText }}</option>
-                    @endif
+                {{-- This visible select now has NO name attribute --}}
+                <select class="form-select medicine-name-select" required data-selected-id="{{ old($prefix.'.'.$index.'.medicine_id', $item->medicine_id) }}" data-selected-text="{{ old($prefix.'.'.$index.'.medicine_name', $item->medicine->name ?? '') }}">
+                    {{-- JS will populate the selected option --}}
                 </select>
             </div>
 
             {{-- Pack Selector --}}
-            <div class="col-md-1 col-lg-1 pack-selector-container" style="{{ isset($item->pack_id) ? '' : 'display: none;' }}">
+            <div class="col-md-1 col-lg-1 pack-selector-container" style="display: none;">
                 <label class="form-label small">Pack:</label>
-                <select class="form-select pack-select" name="{{ $prefix }}[{{ $index }}][pack_id]">
-                    @if(isset($item->pack_id))
-                        <option value="{{ $item->pack_id }}" selected>{{ \App\Models\Pack::find($item->pack_id)?->name }}</option>
-                    @endif
-                </select>
+                {{-- This visible select now has NO name attribute --}}
+                <select class="form-select pack-select"></select>
             </div>
 
             {{-- Batch Number --}}
@@ -44,7 +34,8 @@
             {{-- Expiry Date --}}
             <div class="col-md-2 col-lg-1">
                 <label class="form-label small">Expiry:</label>
-                <input type="text" class="form-control expiry-date" name="{{ $prefix }}[{{ $index }}][expiry_date]" value="{{ old($prefix . '.' . $index . '.expiry_date', $item->expiry_date ?? '') }}" placeholder="MM/YY" pattern="^(0[1-9]|1[0-2])\/\d{2}$">
+                <input type="text" class="form-control expiry-date" value="{{ old($prefix . '.' . $index . '.expiry_date', $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('m/y') : '') }}" placeholder="MM/YY">
+                <input type="hidden" name="{{ $prefix }}[{{ $index }}][expiry_date]" value="{{ old($prefix . '.' . $index . '.expiry_date', $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('Y-m-d') : '') }}">
             </div>
 
             {{-- Quantity --}}
