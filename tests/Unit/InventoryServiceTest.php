@@ -11,6 +11,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Mockery;
+use PHPUnit\Framework\Attributes\Test;
 
 class InventoryServiceTest extends TestCase
 {
@@ -39,7 +40,7 @@ class InventoryServiceTest extends TestCase
         parent::tearDown();
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_grouped_inventory()
     {
         $searchTerm = 'paracetamol';
@@ -55,7 +56,7 @@ class InventoryServiceTest extends TestCase
         $this->assertInstanceOf(LengthAwarePaginator::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_grouped_inventory_with_null_search_term()
     {
         $searchTerm = null;
@@ -71,7 +72,7 @@ class InventoryServiceTest extends TestCase
         $this->assertInstanceOf(LengthAwarePaginator::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_inventory_details_for_medicine_when_inventory_exists()
     {
         // Arrange
@@ -120,7 +121,7 @@ class InventoryServiceTest extends TestCase
         $this->assertEquals('Paracetamol 500mg', $result['medicine']->name);
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_inventory_details_and_finds_medicine_when_inventory_is_empty()
     {
         // Arrange
@@ -156,7 +157,7 @@ class InventoryServiceTest extends TestCase
         $this->assertEquals('Paracetamol 500mg', $result['medicine']->name);
     }
 
-    /** @test */
+    #[Test]
     public function it_throws_model_not_found_exception_when_medicine_not_found_for_details()
     {
         // Arrange

@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
 use App\Services\CustomerService;
+use PHPUnit\Framework\Attributes\Test;
 use App\Interfaces\CustomerRepositoryInterface;
 use App\Models\Customer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -42,7 +43,7 @@ class CustomerServiceTest extends TestCase
         parent::tearDown();
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_all_customers_paginated()
     {
         $filters = ['search' => 'John Doe'];
@@ -58,7 +59,7 @@ class CustomerServiceTest extends TestCase
         $this->assertInstanceOf(LengthAwarePaginator::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_a_customer()
     {
         $customerData = ['name' => 'Jane Doe', 'email' => 'jane@example.com', 'phone' => '1234567890'];
@@ -77,7 +78,7 @@ class CustomerServiceTest extends TestCase
         $this->assertInstanceOf(Customer::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_a_customer_by_id()
     {
         $customerId = 1;
@@ -93,7 +94,7 @@ class CustomerServiceTest extends TestCase
         $this->assertInstanceOf(Customer::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_null_when_customer_not_found_by_id()
     {
         $customerId = 999;
@@ -108,7 +109,7 @@ class CustomerServiceTest extends TestCase
         $this->assertNull($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_update_a_customer()
     {
         $customerId = 1;
@@ -127,7 +128,7 @@ class CustomerServiceTest extends TestCase
         $this->assertInstanceOf(Customer::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_null_when_updating_non_existent_customer()
     {
         $customerId = 999;
@@ -145,7 +146,7 @@ class CustomerServiceTest extends TestCase
         $this->assertNull($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_delete_a_customer()
     {
         $customerId = 1;
@@ -162,7 +163,7 @@ class CustomerServiceTest extends TestCase
         $this->assertTrue($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_false_when_deleting_non_existent_customer()
     {
         $customerId = 999;
@@ -179,7 +180,7 @@ class CustomerServiceTest extends TestCase
         $this->assertFalse($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_search_customers_by_query()
     {
         $query = 'John';
@@ -199,7 +200,7 @@ class CustomerServiceTest extends TestCase
         $this->assertCount(2, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_empty_collection_when_search_query_is_null()
     {
         $query = null;
@@ -212,7 +213,7 @@ class CustomerServiceTest extends TestCase
         $this->assertEmpty($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_empty_collection_when_search_query_is_empty_string()
     {
         $query = '';
@@ -224,4 +225,4 @@ class CustomerServiceTest extends TestCase
         $this->assertInstanceOf(Collection::class, $result);
         $this->assertEmpty($result);
     }
-}
+}  

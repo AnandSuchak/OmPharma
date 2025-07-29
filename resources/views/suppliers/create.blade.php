@@ -34,7 +34,7 @@
 
                     <div class="col-md-6">
                         <label for="phone_number" class="form-label">📞 Phone Number:</label>
-                        <input type="text" class="form-control" id="phone_number" name="phone_number" >
+                        <input type="text" class="form-control" id="phone_number" name="phone_number"required >
                     </div>
 
                     <div class="col-md-6">

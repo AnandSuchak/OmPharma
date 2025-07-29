@@ -13,6 +13,7 @@ use Illuminate\Support\Collection as BaseCollection; // Alias for the generic Su
 use Mockery;
 use Exception;
 use Carbon\Carbon;
+use PHPUnit\Framework\Attributes\Test;
 
 class MedicineServiceTest extends TestCase
 {
@@ -42,7 +43,7 @@ class MedicineServiceTest extends TestCase
         parent::tearDown();
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_all_medicines_paginated()
     {
         // Arrange
@@ -61,7 +62,7 @@ class MedicineServiceTest extends TestCase
         $this->assertInstanceOf(LengthAwarePaginator::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_a_medicine()
     {
         // Arrange
@@ -80,7 +81,7 @@ class MedicineServiceTest extends TestCase
         $this->assertInstanceOf(Medicine::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_a_medicine_by_id()
     {
         // Arrange
@@ -99,7 +100,7 @@ class MedicineServiceTest extends TestCase
         $this->assertInstanceOf(Medicine::class, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_null_when_medicine_not_found_by_id()
     {
         // Arrange
@@ -117,7 +118,7 @@ class MedicineServiceTest extends TestCase
         $this->assertNull($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_update_a_medicine()
     {
         // Arrange
@@ -136,7 +137,7 @@ class MedicineServiceTest extends TestCase
         $this->assertTrue($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_false_when_updating_non_existent_medicine()
     {
         // Arrange
@@ -155,7 +156,7 @@ class MedicineServiceTest extends TestCase
         $this->assertFalse($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_delete_a_medicine_without_related_transactions()
     {
         // Arrange
@@ -178,7 +179,7 @@ class MedicineServiceTest extends TestCase
         $this->assertTrue($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_throws_exception_when_deleting_medicine_with_related_transactions()
     {
         // Arrange
@@ -201,7 +202,7 @@ class MedicineServiceTest extends TestCase
         $this->medicineRepository->shouldNotHaveReceived('delete');
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_formatted_batches_for_new_sale()
     {
         // Arrange
@@ -247,7 +248,7 @@ class MedicineServiceTest extends TestCase
         ], $result->last());
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_formatted_batches_for_existing_sale()
     {
         // Arrange
@@ -295,7 +296,7 @@ class MedicineServiceTest extends TestCase
         $this->assertNull($result[1]['existing_sale_item']);
     }
     
-    /** @test */
+    #[Test]
     public function it_gets_formatted_search_results_with_stock_single_pack()
     {
         // Arrange
@@ -327,7 +328,7 @@ class MedicineServiceTest extends TestCase
         ], $result[0]);
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_formatted_search_results_with_stock_multiple_packs()
     {
         // Arrange
@@ -359,7 +360,7 @@ class MedicineServiceTest extends TestCase
         ], $result[0]);
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_formatted_search_results_with_stock_with_generic_company()
     {
         // Arrange
@@ -383,7 +384,7 @@ class MedicineServiceTest extends TestCase
         $this->assertEquals('Vitamin C (Generic) - 100mg', $result[0]['text']);
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_formatted_search_by_name_or_company()
     {
         // Arrange
@@ -417,7 +418,7 @@ class MedicineServiceTest extends TestCase
         ], $result->last());
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_formatted_search_by_name_for_purchase()
     {
         // Arrange
@@ -451,7 +452,7 @@ class MedicineServiceTest extends TestCase
         ], $result->last());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_packs_for_a_given_medicine_name()
     {
         // Arrange

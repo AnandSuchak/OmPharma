@@ -57,7 +57,7 @@ class SaleService
                     'batch_number' => $itemData['batch_number'],
                 ]);
 
-                if ((float)($inventory->quantity ?? 0.0) - $totalQty < 0) {
+                if ((float)($inventory->quantity ?? 0.0) < $totalQty) {
                     throw ValidationException::withMessages([
                         'quantity' => "Insufficient stock for batch '{$itemData['batch_number']}'."
                     ]);
