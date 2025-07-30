@@ -69,37 +69,64 @@ class MedicineService
     /**
      * Get and format batches for the sales form.
      */
-    public function getFormattedBatches(int $medicineId, ?int $saleId): Collection
-    {
-        $batches = $saleId
-            ? $this->medicineRepository->findBatchesFromPastSale($medicineId, $saleId)
-            : $this->medicineRepository->findBatchesForSale($medicineId);
+public function getFormattedBatches(int $medicineId, ?int $saleId): Collection
+{
+    $batches = $saleId
+        ? $this->medicineRepository->findBatchesFromPastSale($medicineId, $saleId)
+        : $this->medicineRepository->findBatchesForSale($medicineId);
+        
+if (!$saleId && $batches->isEmpty()) {
+            // ...try to find the latest purchase details as a fallback for pricing.
+            $latestPurchase = $this->medicineRepository->findLatestPurchaseDetails($medicineId);
+            
+            if ($latestPurchase) {
+                // Now, let's get the total stock for this medicine from the inventories table.
+                // We assume the relationship 'medicine' is defined on the PurchaseBillItem model.
+                $latestPurchase->load('medicine.inventories');
+                $totalStock = $latestPurchase->medicine->inventories->sum('quantity');
 
-        // If editing a sale, we need to attach the previously sold items to their batches
-        if ($saleId) {
-            $existingSaleItems = SaleItem::where('sale_id', $saleId)
-                ->where('medicine_id', $medicineId)
-                ->get()
-                ->keyBy('batch_number');
-
-            foreach ($batches as $batch) {
-                $batch->existing_sale_item = $existingSaleItems->get($batch->batch_number);
+                // Create a "fake" batch object with the total quantity but with the pricing info.
+                $fallbackBatch = (object)[
+                    'medicine_id' => $latestPurchase->medicine_id,
+                    'medicine_name' => $latestPurchase->medicine->name,
+                    'pack' => $latestPurchase->medicine->pack,
+                    'batch_number' => 'N/A', // No specific batch
+                    'expiry_date' => null,
+                    'quantity' => $totalStock, // CORRECTED: Use the actual total stock
+                    'sale_price' => $latestPurchase->sale_price,
+                    'gst_rate' => $latestPurchase->gst_rate,
+                    'ptr' => $latestPurchase->ptr,
+                ];
+                // Replace the empty collection with a collection containing our one fallback item.
+                $batches = new \Illuminate\Database\Eloquent\Collection([$fallbackBatch]);
             }
         }
 
-        // Map the raw data to the format needed by the frontend
-        return $batches->map(function ($batch) {
-            return [
-                'batch_number'       => $batch->batch_number,
-                'expiry_date'        => $batch->expiry_date ? Carbon::parse($batch->expiry_date)->format('Y-m-d') : '',
-                'quantity'           => (float)($batch->quantity ?? 0.0),
-                'sale_price'         => (float)($batch->sale_price ?? 0.0),
-                'ptr'                => (float)($batch->ptr ?? 0.0),
-                'gst'                => (float)($batch->gst_rate ?? 0.0),
-                'existing_sale_item' => $batch->existing_sale_item ?? null
-            ];
-        })->values();
+    // Attach existing sale item info if editing
+    if ($saleId) {
+        $existingSaleItems = SaleItem::where('sale_id', $saleId)
+            ->where('medicine_id', $medicineId)
+            ->get()
+            ->keyBy('batch_number');
+
+        foreach ($batches as $batch) {
+            $batch->existing_sale_item = $existingSaleItems->get($batch->batch_number);
+        }
     }
+
+    return $batches->map(function ($batch) {
+        return [
+            'batch_number'       => $batch->batch_number,
+            'expiry_date'        => $batch->expiry_date ? Carbon::parse($batch->expiry_date)->format('Y-m-d') : '',
+            'quantity'           => (float)($batch->quantity ?? 0.0),
+            'sale_price'         => (float)($batch->sale_price ?? 0.0),
+            'ptr'                => (float)($batch->ptr ?? 0.0),
+            'gst_rate'                => (float)($batch->gst_rate ?? 0.0),
+            'existing_sale_item' => $batch->existing_sale_item ?? null
+        ];
+    })->values();
+}
+
 
     /**
      * Get and format search results for medicines with available stock.

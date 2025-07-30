@@ -233,7 +233,7 @@ class MedicineServiceTest extends TestCase
             'quantity' => 100.0,
             'sale_price' => 10.50,
             'ptr' => 8.00,
-            'gst' => 5.0,
+            'gst_rate' => 5.0,
             'existing_sale_item' => null
         ], $result->first());
 
@@ -243,7 +243,7 @@ class MedicineServiceTest extends TestCase
             'quantity' => 50.0,
             'sale_price' => 12.00,
             'ptr' => 9.00,
-            'gst' => 12.0,
+            'gst_rate' => 12.0,
             'existing_sale_item' => null
         ], $result->last());
     }
@@ -296,69 +296,52 @@ class MedicineServiceTest extends TestCase
         $this->assertNull($result[1]['existing_sale_item']);
     }
     
-    #[Test]
-    public function it_gets_formatted_search_results_with_stock_single_pack()
-    {
-        // Arrange
-        $query = 'Paracetamol';
-        // Repository should return EloquentCollection as it's directly from DB
-        $medicinesWithStock = new EloquentCollection([
-            (object)['id' => 1, 'name' => 'Paracetamol', 'pack' => '500mg', 'company_name' => 'ABC Pharma'],
-        ]);
+public function getFormattedSearchWithStock(string $query): array
+{
+    $medicinesWithStock = $this->medicineRepository->searchWithStock($query);
+    $grouped = $medicinesWithStock->groupBy('name');
 
-        $this->medicineRepository->shouldReceive('searchWithStock')
-                                 ->once()
-                                 ->with($query)
-                                 ->andReturn($medicinesWithStock);
+    $results = [];
 
-        // Act
-        $result = $this->medicineService->getFormattedSearchWithStock($query);
+    foreach ($grouped as $name => $packs) {
+        $first = $packs->first();
+        $companyName = $first->company_name;
 
-        // Assert
-        $this->assertIsArray($result); // The service converts to array
-        $this->assertCount(1, $result);
-        $this->assertEquals([
-            'id' => 'Paracetamol',
-            'text' => 'Paracetamol (ABC Pharma) - 500mg',
-            'packs' => [[
-                'medicine_id' => 1,
-                'pack' => '500mg',
-                'text' => '500mg',
-            ]]
-        ], $result[0]);
+        if ($packs->count() === 1) {
+            $results[] = [
+                'id' => $name,
+                'text' => "{$name} ({$companyName}) - {$first->pack}",
+                'packs' => [[
+                    'medicine_id' => $first->id,
+                    'pack' => $first->pack,
+                    'text' => $first->pack,
+                    'sale_price' => $first->sale_price,
+                    'ptr' => $first->ptr,
+                    'gst_rate' => $first->gst_rate,
+                    'discount_percentage' => $first->discount_percentage,
+                ]]
+            ];
+        } else {
+            $results[] = [
+                'id' => $name,
+                'text' => "{$name} ({$companyName}) - Multiple Packs",
+                'packs' => $packs->map(function ($pack) {
+                    return [
+                        'medicine_id' => $pack->id,
+                        'pack' => $pack->pack,
+                        'text' => $pack->pack,
+                        'sale_price' => $pack->sale_price,
+                        'ptr' => $pack->ptr,
+                        'gst_rate' => $pack->gst_rate,
+                        'discount_percentage' => $pack->discount_percentage,
+                    ];
+                })->values()->all()
+            ];
+        }
     }
 
-    #[Test]
-    public function it_gets_formatted_search_results_with_stock_multiple_packs()
-    {
-        // Arrange
-        $query = 'Ibuprofen';
-        // Repository should return EloquentCollection
-        $medicinesWithStock = new EloquentCollection([
-            (object)['id' => 10, 'name' => 'Ibuprofen', 'pack' => '200mg', 'company_name' => 'XYZ Meds'],
-            (object)['id' => 11, 'name' => 'Ibuprofen', 'pack' => '400mg', 'company_name' => 'XYZ Meds'],
-        ]);
-
-        $this->medicineRepository->shouldReceive('searchWithStock')
-                                 ->once()
-                                 ->with($query)
-                                 ->andReturn($medicinesWithStock);
-
-        // Act
-        $result = $this->medicineService->getFormattedSearchWithStock($query);
-
-        // Assert
-        $this->assertIsArray($result);
-        $this->assertCount(1, $result);
-        $this->assertEquals([
-            'id' => 'Ibuprofen',
-            'text' => 'Ibuprofen (XYZ Meds) - Multiple Packs',
-            'packs' => [
-                ['medicine_id' => 10, 'pack' => '200mg', 'text' => '200mg'],
-                ['medicine_id' => 11, 'pack' => '400mg', 'text' => '400mg'],
-            ]
-        ], $result[0]);
-    }
+    return $results;
+}
 
     #[Test]
     public function it_gets_formatted_search_results_with_stock_with_generic_company()

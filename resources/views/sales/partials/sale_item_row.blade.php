@@ -11,22 +11,13 @@
         {{-- Hidden fields for other data passed from backend/old input --}}
         <input type="hidden" class="gst-rate-input" name="{{ $prefix }}[gst_rate]" value="{{ old("{$prefix}.gst_rate", $item->gst_rate ?? 0) }}">
         <input type="hidden" class="mrp-input-hidden" name="{{ $prefix }}[ptr]" value="{{ old("{$prefix}.ptr", $item->ptr ?? '') }}">
-        {{-- This hidden input will store the name of the selected pack for form submission --}}
         <input type="hidden" class="pack-name-hidden" name="{{ $prefix }}[pack]" value="{{ old("{$prefix}.pack", $item->pack ?? '') }}">
 
         <div class="row g-2 align-items-end mb-3">
             {{-- Medicine Name (Select2 for searching medicine names) --}}
-            <div class="col-md-4">
-                <label for="medicine_{{ $index }}" class="form-label">Medicine Name:</label>
+            <div class="col-md-6">
+                <label for="medicine_{{ $index }}" class="form-label">Medicine Name (Pack):</label>
                 <select id="medicine_{{ $index }}" class="form-select medicine-name-select" required>
-                    <option></option>
-                </select>
-            </div>
-
-            {{-- Pack Selector (This is now a select dropdown, populated by JS) --}}
-            <div class="col-md-2">
-                <label for="pack_select_{{ $index }}" class="form-label">Pack:</label>
-                <select id="pack_select_{{ $index }}" class="form-select pack-select" required disabled>
                     <option></option>
                 </select>
             </div>
@@ -77,7 +68,7 @@
                 <label for="discount_{{ $index }}" class="form-label">Discount (%):</label>
                 <input type="number" id="discount_{{ $index }}" class="form-control discount-percentage-input item-calc" name="{{ $prefix }}[discount_percentage]" value="{{ old("{$prefix}.discount_percentage", $item->discount_percentage ?? 0) }}" step="0.01" min="0">
             </div>
-            
+
             {{-- GST Rate (%) Display --}}
             <div class="col-md-2">
                 <label for="gst_percent_display_{{ $index }}" class="form-label">GST Rate (%):</label>

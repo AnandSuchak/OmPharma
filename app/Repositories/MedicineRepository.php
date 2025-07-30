@@ -7,6 +7,7 @@ namespace App\Repositories;
 use App\Interfaces\MedicineRepositoryInterface;
 use App\Models\Inventory;
 use App\Models\Medicine;
+use App\Models\PurchaseBillItem;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -88,21 +89,41 @@ class MedicineRepository implements MedicineRepositoryInterface
     /**
      * {@inheritdoc}
      */
-    public function findBatchesForSale(int $medicineId): Collection
+public function findBatchesForSale(int $medicineId): Collection
+{
+    return Inventory::query()
+        ->join('purchase_bill_items', function ($join) {
+            $join->on('inventories.medicine_id', '=', 'purchase_bill_items.medicine_id')
+                 ->on('inventories.batch_number', '=', 'purchase_bill_items.batch_number');
+        })
+        ->join('medicines', 'inventories.medicine_id', '=', 'medicines.id')
+        ->where('inventories.medicine_id', $medicineId)
+        ->where('inventories.quantity', '>', 0)
+        ->whereNull('purchase_bill_items.deleted_at')
+        ->select(
+            'medicines.id as medicine_id',
+            'medicines.name as medicine_name',
+            'medicines.pack',
+            'inventories.batch_number',
+            'inventories.expiry_date',
+            'inventories.quantity',
+            'purchase_bill_items.sale_price',
+            'purchase_bill_items.gst_rate',
+            'purchase_bill_items.ptr'
+        )
+        ->orderByRaw('CASE WHEN inventories.expiry_date IS NULL THEN 1 ELSE 0 END') // NULL last
+        ->orderBy('inventories.expiry_date', 'asc') // Nearest expiry first
+        ->get();
+}
+
+    /**
+     * NEW: Fallback method to get the latest pricing info if no batches with stock are found.
+     */
+    public function findLatestPurchaseDetails(int $medicineId): ?PurchaseBillItem
     {
-        return Inventory::query()
-            ->select(
-                'inventories.batch_number', 'inventories.expiry_date', 'inventories.quantity',
-                'purchase_bill_items.sale_price', 'purchase_bill_items.gst_rate', 'purchase_bill_items.ptr'
-            )
-            ->join('purchase_bill_items', function ($join) {
-                $join->on('inventories.medicine_id', '=', 'purchase_bill_items.medicine_id')
-                     ->on('inventories.batch_number', '=', 'purchase_bill_items.batch_number');
-            })
-            ->where('inventories.medicine_id', $medicineId)
-            ->where('inventories.quantity', '>', 0)
-            ->whereNull('purchase_bill_items.deleted_at')
-            ->get();
+        return PurchaseBillItem::where('medicine_id', $medicineId)
+            ->orderBy('id', 'desc')
+            ->first();
     }
 
     /**
@@ -155,7 +176,7 @@ class MedicineRepository implements MedicineRepositoryInterface
                 $q->where('medicines.name', 'like', "%{$query}%")
                   ->orWhere('medicines.company_name', 'like', "%{$query}%");
             })
-            ->select('medicines.id', 'medicines.name', 'medicines.company_name', 'medicines.pack')
+            ->select('medicines.id', 'medicines.name', 'medicines.pack')
             ->distinct()
             ->get();
     }

@@ -1,313 +1,339 @@
+/**
+ * sale-items.js
+ * This script handles all the dynamic functionality for the sales create/edit page.
+ * It manages adding/removing sale items, searching for medicines, fetching batches,
+ * and calculating totals in real-time.
+ */
+
 document.addEventListener('DOMContentLoaded', function () {
+    // --- 1. INITIAL SETUP & VARIABLE DECLARATION ---
     const container = document.getElementById('sale_items_container');
-    if (!container) return;
+    if (!container) {
+        console.error("Sale items container not found!");
+        return;
+    }
 
     const addItemBtn = document.getElementById('add_new_item');
     const template = document.getElementById('sale_item_template');
+    const saleForm = document.querySelector('form');
+
+    // Get data from the main container's data attributes
     const medicineSearchUrl = container.dataset.searchUrl;
     const batchApiUrlBase = container.dataset.batchBaseUrl;
     const isEditMode = container.dataset.isEdit === 'true';
     const saleId = container.dataset.saleId;
+
     let itemCount = document.querySelectorAll('.sale-item-wrapper').length;
-    const saleForm = document.querySelector('form');
+ const EXTRA_DISCOUNT_PERCENTAGE = 3.00;
+    // --- 2. HELPER FUNCTIONS ---
 
-    const EXTRA_DISCOUNT_PERCENTAGE = 3;
-
-    function clearAndDisable(wrapper, selector) {
-        const select = $(wrapper).find(selector);
-        select.empty().trigger('change').prop('disabled', true);
-    }
-
+    /**
+     * Resets all input fields in a given item row to their default state.
+     * @param {HTMLElement} wrapper The .sale-item-wrapper element for the row.
+     */
     function resetItemDetails(wrapper) {
-        wrapper.querySelector('.sale-price-input').value = '0.00';
-        wrapper.querySelector('.mrp-input').value = 'N/A';
-        wrapper.querySelector('.gst-percent-input').value = '0%';
-        wrapper.querySelector('.gst-amount-input').value = '0.00';
-        wrapper.querySelector('.discount-percentage-input').value = '0';
-        wrapper.querySelector('.gst-rate-input').value = '0';
-        wrapper.querySelector('.expiry-date-input').value = '';
-        wrapper.querySelector('.mrp-input-hidden').value = '';
-        if (wrapper.querySelector('.pack-name-hidden')) {
-            wrapper.querySelector('.pack-name-hidden').value = '';
+        const inputs = {
+            salePrice: wrapper.querySelector('.sale-price-input'),
+            mrpDisplay: wrapper.querySelector('.mrp-input'),
+            gstPercent: wrapper.querySelector('.gst-percent-input'),
+            gstAmount: wrapper.querySelector('.gst-amount-input'),
+            discount: wrapper.querySelector('.discount-percentage-input'),
+            quantity: wrapper.querySelector('.quantity-input'),
+            freeQuantity: wrapper.querySelector('.free-qty-input'),
+            gstRateHidden: wrapper.querySelector('.gst-rate-input'),
+            expiryDate: wrapper.querySelector('.expiry-date-input'),
+            ptrHidden: wrapper.querySelector('.mrp-input-hidden'),
+            packHidden: wrapper.querySelector('.pack-name-hidden'),
+            availableQty: wrapper.querySelector('.available-quantity'),
+        };
+
+        if (inputs.salePrice) inputs.salePrice.value = '0.00';
+        if (inputs.mrpDisplay) inputs.mrpDisplay.value = 'N/A';
+        if (inputs.gstPercent) inputs.gstPercent.value = '0%';
+        if (inputs.gstAmount) inputs.gstAmount.value = '0.00';
+        if (inputs.discount) inputs.discount.value = '0';
+        if (inputs.gstRateHidden) inputs.gstRateHidden.value = '0';
+        if (inputs.expiryDate) inputs.expiryDate.value = '';
+        if (inputs.ptrHidden) inputs.ptrHidden.value = '';
+        if (inputs.packHidden) inputs.packHidden.value = '';
+        if (inputs.quantity) {
+            inputs.quantity.value = '0';
+            inputs.quantity.disabled = true;
+            inputs.quantity.classList.remove('is-invalid');
         }
-        wrapper.querySelector('.extra-discount-checkbox').checked = false;
-        wrapper.querySelector('.applied-extra-discount-percentage').value = '0.00';
+        if (inputs.freeQuantity) inputs.freeQuantity.value = '0';
+        if (inputs.availableQty) inputs.availableQty.textContent = '';
+        wrapper.dataset.availableQuantity = '0';
+
+        calculateTotals();
+    }
+    
+    /**
+     * Populates price-related fields from data.
+     * @param {HTMLElement} wrapper The .sale-item-wrapper element for the row.
+     * @param {object} data The data object containing pricing info.
+     */
+    function populatePriceDetails(wrapper, data) {
+        const salePriceInput = wrapper.querySelector('.sale-price-input');
+        const mrpInputDisplay = wrapper.querySelector('.mrp-input');
+        const gstPercentDisplay = wrapper.querySelector('.gst-percent-input');
+        const gstRateInputHidden = wrapper.querySelector('.gst-rate-input');
+        const ptrInputHidden = wrapper.querySelector('.mrp-input-hidden');
+        const discountInput = wrapper.querySelector('.discount-percentage-input');
+
+        if (salePriceInput) salePriceInput.value = parseFloat(data.sale_price || 0).toFixed(2);
+        if (mrpInputDisplay) mrpInputDisplay.value = data.ptr || 'N/A';
+        if (gstRateInputHidden) gstRateInputHidden.value = parseFloat(data.gst_rate || 0).toFixed(2);
+        if (gstPercentDisplay) gstPercentDisplay.value = `${parseFloat(data.gst_rate || 0).toFixed(2)}%`;
+        if (ptrInputHidden) ptrInputHidden.value = data.ptr || '';
+        if (discountInput) discountInput.value = parseFloat(data.discount_percentage || 0).toFixed(2);
+    }
+
+    /**
+     * Populates a row's fields with data from a selected batch.
+     * @param {HTMLElement} wrapper The .sale-item-wrapper element for the row.
+     * @param {object} batchData The data object for the selected batch.
+     */
+    function populateBatchDetails(wrapper, batchData) {
+        const expiryDateInput = wrapper.querySelector('.expiry-date-input');
+        const availableQuantityDisplay = wrapper.querySelector('.available-quantity');
         const quantityInput = wrapper.querySelector('.quantity-input');
-        quantityInput.value = '0';
-        quantityInput.disabled = true;
-        quantityInput.removeAttribute('max');
-        wrapper.querySelector('.free-qty-input').value = '0';
-        wrapper.setAttribute('data-available-quantity', '0');
-        wrapper.querySelector('.available-quantity').textContent = '';
+
+        if (expiryDateInput) expiryDateInput.value = batchData.expiry_date || '';
+
+        let effectiveAvailable = parseFloat(batchData.quantity || 0);
+        if (isEditMode && batchData.existing_sale_item) {
+            effectiveAvailable += parseFloat(batchData.existing_sale_item.quantity || 0);
+            quantityInput.value = parseFloat(batchData.existing_sale_item.quantity || 0).toFixed(2);
+        } else {
+            quantityInput.value = '1.00';
+        }
+
+        wrapper.dataset.availableQuantity = effectiveAvailable;
+        if(availableQuantityDisplay) availableQuantityDisplay.textContent = `Available: ${effectiveAvailable}`;
+        
+        if (quantityInput) {
+            quantityInput.disabled = false;
+            quantityInput.setAttribute('max', effectiveAvailable);
+        }
+        
+        calculateTotals();
     }
-
-    function initializeRow(wrapper) {
-        $(wrapper).find('.medicine-name-select').select2({
-            theme: 'bootstrap-5',
-            placeholder: 'Search for medicine...',
-            allowClear: true,
-            ajax: {
-                url: medicineSearchUrl,
-                dataType: 'json',
-                delay: 250,
-                data: params => ({ q: params.term }),
-                processResults: data => ({
-                    results: data.map(item => ({
-                        id: item.id,
-                        text: item.text,
-                        original_data: item
-                    }))
-                })
-            }
-        });
-        $(wrapper).find('.pack-select').select2({ theme: 'bootstrap-5', placeholder: 'Select pack', allowClear: true });
-        $(wrapper).find('.batch-number-select').select2({ theme: 'bootstrap-5', placeholder: 'Select batch', allowClear: true });
-
-        clearAndDisable(wrapper, '.pack-select');
-        clearAndDisable(wrapper, '.batch-number-select');
-
-        $(wrapper).find('.medicine-name-select').on('select2:select', function (e) {
-            const selectedData = e.params.data.original_data;
-            resetItemDetails(wrapper);
-            if (selectedData && selectedData.packs && selectedData.packs.length > 0) {
-                const packSelect = $(wrapper).find('.pack-select');
-                packSelect.prop('disabled', false).append(new Option('', ''));
-                selectedData.packs.forEach(pack => {
-                    const option = new Option(pack.text, pack.medicine_id);
-                    $(option).data('pack-name', pack.pack);
-                    packSelect.append(option);
-                });
-                if (selectedData.packs.length === 1) {
-                    const pack = selectedData.packs[0];
-                    packSelect.val(pack.medicine_id).trigger('change');
-                    packSelect.trigger({
-                        type: 'select2:select',
-                        params: { data: { id: pack.medicine_id, text: pack.text, element: packSelect.find(`option[value="${pack.medicine_id}"]`)[0] } }
-                    });
-                } else {
-                    packSelect.trigger('change').select2('open');
-                }
-            }
-        });
-
-        $(wrapper).find('.pack-select').on('select2:select', function (e) {
-            const medicineId = e.params.data.id;
-            if (!medicineId) return;
-            const packName = $(e.params.data.element).data('pack-name') || e.params.data.text;
-            wrapper.querySelector('.medicine-id-input').value = medicineId;
-            wrapper.querySelector('.pack-name-hidden').value = packName;
-            fetchBatches(medicineId, wrapper, null);
-        });
-
-        $(wrapper).find('.batch-number-select').on('select2:select', function (e) {
-            const data = $(e.params.data.element).data('batch-data');
-            if (data) populateBatchDetails(wrapper, data);
-        });
-
-        wrapper.querySelector('.remove-new-item').addEventListener('click', () => {
-            const existingId = wrapper.dataset.itemId;
-            const isExisting = wrapper.dataset.existingItem === 'true';
-            if (isExisting && existingId) {
-                const deletedField = document.getElementById('deleted_items');
-                let current = deletedField.value ? deletedField.value.split(',') : [];
-                if (!current.includes(existingId)) current.push(existingId);
-                deletedField.value = current.join(',');
-            }
-            wrapper.remove();
-            calculateTotals();
-        });
-
-        wrapper.querySelectorAll('.item-calc, .extra-discount-checkbox').forEach(el => {
-            el.addEventListener('input', calculateTotals);
-            el.addEventListener('change', calculateTotals);
-        });
-        wrapper.querySelector('.quantity-input').addEventListener('input', e => {
-            const availableQty = parseFloat(wrapper.getAttribute('data-available-quantity') || 0);
-            validateQuantity(e.target, availableQty);
-        });
-    }
-
+    
+    /**
+     * Fetches available batches for a given medicine ID from the server.
+     * @param {string} medicineId The ID of the selected medicine.
+     * @param {HTMLElement} wrapper The .sale-item-wrapper element for the row.
+     * @param {string|null} selectedBatch The batch number to pre-select (for edit mode).
+     */
     function fetchBatches(medicineId, wrapper, selectedBatch = null) {
         const batchSelect = $(wrapper).find('.batch-number-select');
-        clearAndDisable(wrapper, '.batch-number-select');
+        batchSelect.empty().trigger('change').prop('disabled', true).append(new Option('Loading...', ''));
+
         let url = batchApiUrlBase.replace('PLACEHOLDER', medicineId);
-        if (isEditMode && saleId) url += `?sale_id=${saleId}`;
+        if (isEditMode && saleId) {
+            url += `?sale_id=${saleId}`;
+        }
 
         fetch(url)
-            .then(res => res.ok ? res.json() : Promise.reject(res.statusText))
+            .then(response => response.ok ? response.json() : Promise.reject(response.statusText))
             .then(batches => {
-                if (batches.length === 0) {
-                    batchSelect.append(new Option('No stock available', '', true, true)).trigger('change');
-                    return;
-                }
-                batches.sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
-                let preselectedBatchData = null;
-                batches.forEach(batch => {
-                    const expiry = batch.expiry_date ? new Date(batch.expiry_date).toLocaleDateString('en-IN') : 'N/A';
-                    const text = `${batch.batch_number} (Avl: ${batch.quantity}, Exp: ${expiry})`;
-                    const option = new Option(text, batch.batch_number);
-                    $(option).data('batch-data', batch);
-                    batchSelect.append(option);
-                    if (selectedBatch && batch.batch_number === selectedBatch) preselectedBatchData = batch;
-                });
-                batchSelect.prop('disabled', false).trigger('change');
-                const batchToSelect = preselectedBatchData || batches.find(b => b.quantity > 0) || batches[0];
-                if (batchToSelect) {
-                    batchSelect.val(batchToSelect.batch_number).trigger('change');
-                    batchSelect.trigger({
-                        type: 'select2:select',
-                        params: { data: { element: batchSelect.find(`option[value="${batchToSelect.batch_number}"]`)[0] } }
+                batchSelect.empty().append(new Option('', '')); // Add a placeholder
+                if (batches.length > 0) {
+                    batches.forEach(batch => {
+                        const expiry = batch.expiry_date ? new Date(batch.expiry_date).toLocaleDateString('en-IN') : 'N/A';
+                        const text = `${batch.batch_number} (Avl: ${batch.quantity}, Exp: ${expiry})`;
+                        const option = new Option(text, batch.batch_number);
+                        $(option).data('batch-data', batch);
+                        batchSelect.append(option);
                     });
+                    batchSelect.prop('disabled', false);
+
+                    if (selectedBatch) {
+                        batchSelect.val(selectedBatch).trigger('change');
+                        const preselectedData = $(batchSelect.find(`option[value="${selectedBatch}"]`)).data('batch-data');
+                        if(preselectedData) {
+                            populatePriceDetails(wrapper, preselectedData);
+                            populateBatchDetails(wrapper, preselectedData);
+                        }
+                    } else {
+                        // Auto-select the first batch
+                        const firstBatch = batches[0];
+                        batchSelect.val(firstBatch.batch_number).trigger('change');
+                        populatePriceDetails(wrapper, firstBatch); 
+                        populateBatchDetails(wrapper, firstBatch);
+                    }
+                } else {
+                    batchSelect.append(new Option('No stock available', '', true, true));
                 }
+                batchSelect.trigger('change');
             })
-            .catch(err => {
-                console.error("Fetch batches failed:", err);
-                batchSelect.empty().append(new Option('Error loading batches', '', true, true)).trigger('change');
+            .catch(error => {
+                console.error('Error fetching batches:', error);
+                batchSelect.empty().append(new Option('Error loading', '', true, true));
             });
     }
 
-    function populateBatchDetails(wrapper, data) {
-        wrapper.querySelector('.sale-price-input').value = parseFloat(data.sale_price || 0).toFixed(2);
-        wrapper.querySelector('.mrp-input').value = data.ptr || 'N/A';
-        wrapper.querySelector('.gst-rate-input').value = parseFloat(data.gst || 0).toFixed(2);
-        wrapper.querySelector('.gst-percent-input').value = `${parseFloat(data.gst || 0).toFixed(2)}%`;
-        wrapper.querySelector('.expiry-date-input').value = data.expiry_date;
-        wrapper.querySelector('.mrp-input-hidden').value = data.ptr || '';
-
-        let effectiveAvailable = parseFloat(data.quantity);
-        if (isEditMode && data.existing_sale_item) {
-            effectiveAvailable += parseFloat(data.existing_sale_item.quantity || 0) + parseFloat(data.existing_sale_item.free_quantity || 0);
-            wrapper.querySelector('.quantity-input').value = parseFloat(data.existing_sale_item.quantity || 0).toFixed(2);
-        } else {
-            wrapper.querySelector('.quantity-input').value = '1.00';
-        }
-
-        const quantityInput = wrapper.querySelector('.quantity-input');
-        quantityInput.disabled = false;
-        quantityInput.setAttribute('max', effectiveAvailable);
-        wrapper.setAttribute('data-available-quantity', effectiveAvailable);
-        wrapper.querySelector('.available-quantity').textContent = `Available: ${effectiveAvailable}`;
-        validateQuantity(quantityInput, effectiveAvailable);
-        calculateTotals();
-    }
-
-    function validateQuantity(quantityInput, available) {
-        if (!quantityInput) return;
-        quantityInput.classList.remove('is-invalid');
-        const requested = parseFloat(quantityInput.value || 0);
-        if (isNaN(available) || requested > available) {
-            quantityInput.classList.add('is-invalid');
-        }
-    }
-
+    /**
+     * Calculates all totals for the entire form and updates the display.
+     */
     function calculateTotals() {
         let subtotal = 0;
         let totalGst = 0;
-        document.querySelectorAll('.sale-item-wrapper').forEach(wrapper => {
+
+        document.querySelectorAll('.sale-item-wrapper').forEach((wrapper, index) => {
             const qty = parseFloat(wrapper.querySelector('.quantity-input').value) || 0;
             if (qty === 0) {
                 wrapper.querySelector('.gst-amount-input').value = '0.00';
                 return;
             }
+            
             const price = parseFloat(wrapper.querySelector('.sale-price-input').value) || 0;
             const discount = parseFloat(wrapper.querySelector('.discount-percentage-input').value) || 0;
             const gstRate = parseFloat(wrapper.querySelector('.gst-rate-input').value) || 0;
-            const extraDiscountChecked = wrapper.querySelector('.extra-discount-checkbox').checked;
-            const extraDiscount = extraDiscountChecked ? EXTRA_DISCOUNT_PERCENTAGE : 0;
-            wrapper.querySelector('.applied-extra-discount-percentage').value = extraDiscount.toFixed(2);
+            
+            // This reads the value from the hidden input
+            const appliedExtraDiscount = parseFloat(wrapper.querySelector('.applied-extra-discount-percentage').value) || 0;
+
+            // --- CONSOLE LOG ADDED HERE ---
+            console.log(`Item #${index + 1}: Applying extra discount of ${appliedExtraDiscount}%`);
+            // -----------------------------
+
             let lineTotal = qty * price;
             lineTotal *= (1 - discount / 100);
-            lineTotal *= (1 - extraDiscount / 100);
+            lineTotal *= (1 - appliedExtraDiscount / 100); // Apply extra discount here
+
             const gstAmount = lineTotal * (gstRate / 100);
+            
             subtotal += lineTotal;
             totalGst += gstAmount;
+
             wrapper.querySelector('.gst-amount-input').value = gstAmount.toFixed(2);
         });
+
+        const grandTotal = subtotal + totalGst;
+
         document.getElementById('subtotal').textContent = subtotal.toFixed(2);
         document.getElementById('total_gst').textContent = totalGst.toFixed(2);
-        document.getElementById('grand_total').textContent = Math.round(subtotal + totalGst).toFixed(2);
+        document.getElementById('grand_total').textContent = grandTotal.toFixed(2);
     }
 
-    function addItem(initialData = {}) {
-        const prefix = initialData.id
-            ? `existing_sale_items[${initialData.id}]`
-            : `new_sale_items[${itemCount}]`;
+    /**
+     * Initializes all event listeners for a given item row.
+     */
+/**
+ * Initializes all event listeners for a given item row.
+ * @param {HTMLElement} wrapper The .sale-item-wrapper element for the row.
+ */
+function initializeRow(wrapper) {
+    const medicineSelect = $(wrapper).find('.medicine-name-select');
+    const batchSelect = $(wrapper).find('.batch-number-select');
 
+    // Initialize Select2
+    medicineSelect.select2({
+        theme: 'bootstrap-5',
+        placeholder: 'Search for medicine...',
+        ajax: {
+            url: medicineSearchUrl,
+            dataType: 'json',
+            delay: 250,
+            data: params => ({ q: params.term }),
+            processResults: data => ({
+                // We map the results to a flat list, since each is a unique choice
+                results: data.flatMap(item => 
+                    item.packs.map(pack => ({
+                        id: pack.medicine_id,
+                        text: item.text, // The display text is the main group text
+                        // We attach all the necessary data to the result object
+                        original_pack_data: pack 
+                    }))
+                )
+            })
+        }
+    });
+    batchSelect.select2({ theme: 'bootstrap-5', placeholder: 'Select batch' });
+    
+    // --- EVENT LISTENERS ---
+
+    // When a medicine/pack is selected from the main search
+    medicineSelect.on('select2:select', function(e) {
+        const packData = e.params.data.original_pack_data;
+        if (!packData) return;
+
+        // 1. Set the hidden input values
+        wrapper.querySelector('.medicine-id-input').value = packData.medicine_id;
+        wrapper.querySelector('.pack-name-hidden').value = packData.pack;
+
+        // 2. Populate prices immediately from the search data
+        populatePriceDetails(wrapper, packData);
+
+        // 3. Fetch all available batches for that specific medicine ID
+        fetchBatches(packData.medicine_id, wrapper);
+    });
+
+    // When a specific batch is chosen from the second dropdown
+    batchSelect.on('select2:select', function(e) {
+        const batchData = $(e.params.data.element).data('batch-data');
+        if (batchData) {
+            // Repopulate all details, as this specific batch might have different pricing
+            populatePriceDetails(wrapper, batchData);
+            populateBatchDetails(wrapper, batchData);
+        }
+    });
+    
+    // Add listeners to all inputs that should trigger a recalculation of totals
+    wrapper.querySelectorAll('.item-calc').forEach(el => el.addEventListener('input', calculateTotals));
+    const checkbox = wrapper.querySelector('.extra-discount-checkbox');
+    if (checkbox) {
+        checkbox.addEventListener('change', calculateTotals);
+    }
+    
+    // Add listener for the remove button
+    wrapper.querySelector('.remove-new-item').addEventListener('click', () => {
+        const isExisting = wrapper.dataset.existingItem === 'true';
+        if (isExisting) {
+            const deletedInput = document.getElementById('deleted_items');
+            deletedInput.value += (deletedInput.value ? ',' : '') + wrapper.dataset.itemId;
+        }
+        wrapper.remove();
+        calculateTotals();
+    });
+}
+    /**
+     * Creates a new item row from the template and adds it to the container.
+     */
+    function addNewItem() {
         const templateContent = template.innerHTML
             .replace(/__INDEX__/g, itemCount)
-            .replace(/__PREFIX__/g, prefix);
-
+            .replace(/__PREFIX__/g, `new_sale_items[${itemCount}]`);
+        
         const newWrapper = document.createElement('div');
-        newWrapper.classList.add('sale-item-wrapper');
         newWrapper.innerHTML = templateContent;
-
-        if (initialData.itemId) {
-            newWrapper.dataset.itemId = initialData.itemId;
-        }
-
-        container.appendChild(newWrapper);
-        initializeRow(newWrapper);
-
-        if (Object.keys(initialData).length > 0) {
-            populateExistingRow(newWrapper, initialData);
-        } else {
-            $(newWrapper).find('.medicine-name-select').select2('open');
-        }
-
+        const itemRow = newWrapper.firstElementChild; 
+        itemRow.classList.add('sale-item-wrapper');
+        
+        container.appendChild(itemRow);
+        initializeRow(itemRow);
         itemCount++;
     }
 
-    function populateExistingRow(wrapper, data) {
-        const medicineId = data.medicineId || data.medicine_id;
-        if (!medicineId) return;
-
-        const medicineName = data.medicineName || data.medicine_name;
-        const packName = data.pack;
-        const batchNumber = data.batchNumber || data.batch_number;
-
-        wrapper.querySelector('.medicine-id-input').value = medicineId;
-        wrapper.querySelector('.pack-name-hidden').value = packName;
-        const medSelect = $(wrapper).find('.medicine-name-select');
-        medSelect.append(new Option(medicineName, medicineName, true, true)).trigger('change');
-        const packSelect = $(wrapper).find('.pack-select');
-        const packOption = new Option(packName, medicineId, true, true);
-        $(packOption).data('pack-name', packName);
-        packSelect.append(packOption).trigger('change').prop('disabled', false);
-        fetchBatches(medicineId, wrapper, batchNumber);
-    }
-
-    if (isEditMode) {
-        document.querySelectorAll('.sale-item-wrapper[data-existing-item="true"]').forEach(wrapper => {
-            initializeRow(wrapper);
-            populateExistingRow(wrapper, wrapper.dataset);
-        });
-    } else if (container.children.length === 0) {
-        addItem();
-    }
-
-    addItemBtn.addEventListener('click', () => addItem());
-
-    saleForm.addEventListener('submit', function (event) {
-        let isValid = true;
-        document.querySelectorAll('.sale-item-wrapper').forEach(wrapper => {
-            wrapper.classList.remove('border-danger');
-            let hasError = false;
-            if (!wrapper.querySelector('.medicine-id-input').value) hasError = true;
-            if (!wrapper.querySelector('.batch-number-select').value) hasError = true;
-            const quantityInput = wrapper.querySelector('.quantity-input');
-            if (parseFloat(quantityInput.value || 0) <= 0) hasError = true;
-            if (quantityInput.classList.contains('is-invalid')) hasError = true;
-            if (hasError) {
-                isValid = false;
-                wrapper.classList.add('border-danger');
-            }
-        });
-        if (!isValid) {
-            event.preventDefault();
-            alert('Please fill all required fields for each item and ensure quantity is valid.');
+    // --- 3. SCRIPT INITIALIZATION ---
+    document.querySelectorAll('.sale-item-wrapper').forEach(wrapper => {
+        initializeRow(wrapper);
+        if (isEditMode && wrapper.dataset.medicineId) {
+            const { medicineId, batchNumber, medicineName, pack } = wrapper.dataset;
+            
+            $(wrapper).find('.medicine-name-select').append(new Option(medicineName, medicineId, true, true)).trigger('change');
+            fetchBatches(medicineId, wrapper, batchNumber);
         }
     });
 
+    if (!isEditMode && itemCount === 0) {
+        addNewItem();
+    }
+
+    addItemBtn.addEventListener('click', addNewItem);
+    
     if (isEditMode) {
         calculateTotals();
     }

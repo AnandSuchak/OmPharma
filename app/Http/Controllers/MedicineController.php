@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreMedicineRequest;
 use App\Http\Requests\UpdateMedicineRequest;
 use App\Models\Medicine;
+use App\Models\PurchaseBillItem;
 use App\Services\MedicineService;
 use Exception;
 use Illuminate\Http\JsonResponse;
@@ -152,4 +153,24 @@ class MedicineController extends Controller
             'pack' => $medicine->pack,
         ]);
     }
+
+    public function fallbackDetails($id)
+        {
+            $item = PurchaseBillItem::where('medicine_id', $id)
+                ->orderByDesc('id')
+                ->first();
+
+            if (!$item) {
+                return response()->json(['message' => 'No fallback data found.'], 404);
+            }
+
+            return response()->json([
+                'sale_price' => $item->sale_price,
+                'ptr' => $item->ptr, // if ptr is stored as 'mrp' in your DB, use $item->mrp
+                'gst' => $item->gst,
+                'available_quantity' => $item->quantity, // you can calculate real stock if needed
+            ]);
+        }
+
+
 }
