@@ -6,6 +6,14 @@
  */
 
 document.addEventListener('DOMContentLoaded', function () {
+
+     const oldItems = window.oldInput?.new_items || [];
+
+    if (Array.isArray(oldItems) && oldItems.length > 0) {
+        oldItems.forEach(item => {
+            addNewItemFromOld(item); // 👈 Your existing function to add rows
+        });
+    }
     // --- 1. INITIAL SETUP & VARIABLE DECLARATION ---
     const container = document.getElementById('sale_items_container');
     if (!container) {
@@ -285,7 +293,15 @@ function initializeRow(wrapper) {
     wrapper.querySelectorAll('.item-calc').forEach(el => el.addEventListener('input', calculateTotals));
     const checkbox = wrapper.querySelector('.extra-discount-checkbox');
     if (checkbox) {
-        checkbox.addEventListener('change', calculateTotals);
+        checkbox.addEventListener('change', () => {
+            const isChecked = checkbox.checked;
+            const percentField = wrapper.querySelector('.applied-extra-discount-percentage');
+
+            if (percentField) percentField.value = isChecked ? EXTRA_DISCOUNT_PERCENTAGE : 0.00;
+
+            // Hidden input already submitted via checkbox, no need to set separately
+            calculateTotals();
+        });
     }
     
     // Add listener for the remove button
@@ -298,6 +314,58 @@ function initializeRow(wrapper) {
         wrapper.remove();
         calculateTotals();
     });
+}
+
+function addNewItemFromOld(itemData, index) {
+    const templateContent = template.innerHTML
+        .replace(/__INDEX__/g, index)
+        .replace(/__PREFIX__/g, `new_sale_items[${index}]`);
+
+    const newWrapper = document.createElement('div');
+    newWrapper.innerHTML = templateContent;
+    const itemRow = newWrapper.firstElementChild;
+    itemRow.classList.add('sale-item-wrapper');
+
+    // Append first, then populate
+    container.appendChild(itemRow);
+    initializeRow(itemRow);
+
+    const medicineSelect = $(itemRow).find('.medicine-name-select');
+    const batchSelect = $(itemRow).find('.batch-number-select');
+
+    // Medicine preselect
+    if (itemData.medicine_id && itemData.medicine_name) {
+        const option = new Option(itemData.medicine_name, itemData.medicine_id, true, true);
+        medicineSelect.append(option).trigger('change');
+    }
+
+    // Hidden inputs
+    itemRow.querySelector('.medicine-id-input').value = itemData.medicine_id || '';
+    itemRow.querySelector('.pack-name-hidden').value = itemData.pack || '';
+
+    // Other fields
+    itemRow.querySelector('.quantity-input').value = itemData.quantity || '1.00';
+    itemRow.querySelector('.free-qty-input').value = itemData.free_quantity || '0';
+    itemRow.querySelector('.sale-price-input').value = itemData.sale_price || '0.00';
+    itemRow.querySelector('.discount-percentage-input').value = itemData.discount_percentage || '0.00';
+    itemRow.querySelector('.gst-rate-input').value = itemData.gst_rate || '0.00';
+    itemRow.querySelector('.mrp-input-hidden').value = itemData.ptr || '';
+    itemRow.querySelector('.mrp-input').value = itemData.ptr || 'N/A';
+
+    // ✅ Extra Discount Handling
+    const checkbox = itemRow.querySelector('.extra-discount-checkbox');
+    const extraDiscountField = itemRow.querySelector('.applied-extra-discount-percentage');
+    if (checkbox && itemData.is_extra_discount_applied) {
+        checkbox.checked = true;
+        if (extraDiscountField) {
+            extraDiscountField.value = 3.00; // or window.EXTRA_DISCOUNT_PERCENTAGE if declared globally
+        }
+    } else if (extraDiscountField) {
+        extraDiscountField.value = 0.00;
+    }
+
+    // Set expiry and available qty after batch fetch
+    fetchBatches(itemData.medicine_id, itemRow, itemData.batch_number);
 }
     /**
      * Creates a new item row from the template and adds it to the container.
@@ -337,4 +405,11 @@ function initializeRow(wrapper) {
     if (isEditMode) {
         calculateTotals();
     }
+
+    // Restore previous items on validation error
+if (!isEditMode && window.oldInput && window.oldInput.new_items) {
+    Object.entries(window.oldInput.new_items).forEach(([index, item]) => {
+        addNewItemFromOld(item, index);
+    });
+}
 });

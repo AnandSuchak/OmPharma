@@ -31,6 +31,11 @@ class UpdateSaleRequest extends FormRequest
             'sale_date' => 'required|date',
             'notes' => 'nullable|string',
 
+                    // Extra discount at sale-level
+        'discount_percentage' => 'nullable|numeric|min:0|max:100',
+        'is_extra_discount_applied' => 'nullable|boolean',
+        'applied_extra_discount_percentage' => 'nullable|numeric|min:0|max:100',
+        
             // A string of comma-separated IDs for items to be deleted
             'deleted_items' => 'nullable|string',
 

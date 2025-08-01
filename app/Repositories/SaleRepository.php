@@ -55,6 +55,7 @@ class SaleRepository implements SaleRepositoryInterface
      */
     public function createSale(array $data): Sale
     {
+        dd($data);
         return Sale::create($data);
     }
 

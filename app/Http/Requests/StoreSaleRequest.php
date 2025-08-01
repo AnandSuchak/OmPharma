@@ -31,6 +31,11 @@ class StoreSaleRequest extends FormRequest
             'sale_date' => 'required|date',
             'notes' => 'nullable|string',
 
+                    // Extra discount at sale-level
+        'discount_percentage' => 'nullable|numeric|min:0|max:100',
+        'is_extra_discount_applied' => 'nullable|boolean',
+        'applied_extra_discount_percentage' => 'nullable|numeric|min:0|max:100',
+
             // Item-level rules for new items
             'new_sale_items' => 'required|array|min:1',
             'new_sale_items.*.medicine_id' => 'required|exists:medicines,id',
@@ -40,6 +45,8 @@ class StoreSaleRequest extends FormRequest
             'new_sale_items.*.sale_price' => 'required|numeric|min:0',
             'new_sale_items.*.gst_rate' => 'nullable|numeric|min:0',
             'new_sale_items.*.discount_percentage' => 'nullable|numeric|min:0|max:100',
+            'new_sale_items.*.is_extra_discount_applied' => 'nullable|boolean',
+            'new_sale_items.*.applied_extra_discount_percentage' => 'nullable|numeric|min:0|max:100',
         ];
     }
 

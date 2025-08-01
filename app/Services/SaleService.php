@@ -47,52 +47,87 @@ class SaleService
     public function createSale(array $data): \App\Models\Sale
     {
         DB::beginTransaction();
-        try {
-            // Validate inventory for all items before creating sale
-            foreach ($data['new_sale_items'] as $itemData) {
-                $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
 
-                $inventory = Inventory::firstOrNew([
-                    'medicine_id' => $itemData['medicine_id'],
-                    'batch_number' => $itemData['batch_number'],
+        try {foreach ($data['new_sale_items'] as &$itemData) {
+        $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
+        $batchNumber = $itemData['batch_number'] ?? null;
+
+        // Fallback to oldest batch if batch not selected or 'N/A'
+        if (!$batchNumber || $batchNumber === 'N/A') {
+            $oldestInventory = Inventory::where('medicine_id', $itemData['medicine_id'])
+                ->where('quantity', '>=', $totalQty)
+                ->orderBy('id')
+                ->first();
+
+            if (!$oldestInventory) {
+                throw ValidationException::withMessages([
+                    'quantity' => "Insufficient stock and no valid batch found for medicine ID {$itemData['medicine_id']}."
                 ]);
-
-                if ((float)($inventory->quantity ?? 0.0) < $totalQty) {
-                    throw ValidationException::withMessages([
-                        'quantity' => "Insufficient stock for batch '{$itemData['batch_number']}'."
-                    ]);
-                }
             }
 
-            // Generate bill number and totals
-            $billNumber = $this->generateBillNumber();
-            $totals = $this->calculateTotals($data['new_sale_items']);
+            $batchNumber = $oldestInventory->batch_number;
+            $itemData['batch_number'] = $batchNumber;
+            if (empty($itemData['sale_price'])) {
+                $itemData['sale_price'] = $oldestInventory->sale_price;
+            }
+            if (empty($itemData['ptr'])) {
+                $itemData['ptr'] = $oldestInventory->ptr;
+            }
+            if (empty($itemData['gst_rate'])) {
+                $itemData['gst_rate'] = $oldestInventory->gst;
+            }
+        }
 
-            // Create sale after validation passes
-            $sale = $this->saleRepository->createSale([
-                'customer_id' => $data['customer_id'],
-                'customer_name' => optional(Customer::find($data['customer_id']))->name,
-                'sale_date' => $data['sale_date'],
-                'bill_number' => $billNumber,
-                'notes' => $data['notes'],
-                'total_amount' => $totals['total'],
-                'total_gst_amount' => $totals['gst'],
+        // Ensure extra discount fields are present for each item
+        $itemData['is_extra_discount_applied'] = !empty($itemData['is_extra_discount_applied']);
+        $itemData['applied_extra_discount_percentage'] = $itemData['applied_extra_discount_percentage'] ?? 0;
+
+        // Validate inventory for the selected/fallback batch
+        $inventory = Inventory::where('medicine_id', $itemData['medicine_id'])
+            ->where('batch_number', $batchNumber)
+            ->first();
+
+        if (!$inventory || (float)($inventory->quantity) < $totalQty) {
+            throw ValidationException::withMessages([
+                'quantity' => "Insufficient stock for batch '{$batchNumber}'."
             ]);
-
-            // Adjust inventory and create sale items
-            foreach ($data['new_sale_items'] as $itemData) {
-                $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
-                $this->adjustInventory($itemData, -$totalQty);
-                $this->saleRepository->createItem($sale->id, $itemData);
-            }
-
-            DB::commit();
-            return $sale;
-        } catch (Exception $e) {
-            DB::rollBack();
-            throw $e;
         }
     }
+
+
+        // Generate bill number and totals
+        $billNumber = $this->generateBillNumber();
+        $totals = $this->calculateTotals($data['new_sale_items']);
+
+        // Create sale
+        $sale = $this->saleRepository->createSale([
+            'customer_id' => $data['customer_id'],
+            'customer_name' => optional(Customer::find($data['customer_id']))->name,
+            'sale_date' => $data['sale_date'],
+            'bill_number' => $billNumber,
+            'notes' => $data['notes'] ?? null,
+            'total_amount' => $totals['total'],
+            'total_gst_amount' => $totals['gst'],
+            'discount_percentage' => $data['discount_percentage'] ?? 0,
+            
+        ]);
+
+        // Adjust inventory and create sale items
+        foreach ($data['new_sale_items'] as $itemData) {
+            $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
+            $this->adjustInventory($itemData, -$totalQty);
+            $this->saleRepository->createItem($sale->id, $itemData);
+        }
+
+        DB::commit();
+        return $sale;
+    } catch (\Exception $e) {
+        DB::rollBack();
+        throw $e;
+    }
+}
+
+
 
     /**
      * Update an existing sale, handling items and inventory adjustments.
@@ -235,7 +270,7 @@ class SaleService
     /**
      * Calculate totals for a set of items.
      */
-    private function calculateTotals(iterable $items): array
+   private function calculateTotals(iterable $items): array
     {
         $subtotal = 0.0;
         $gst = 0.0;
@@ -243,8 +278,14 @@ class SaleService
         foreach ($items as $item) {
             $quantity = (float)(is_array($item) ? $item['quantity'] : $item->quantity);
             $salePrice = (float)(is_array($item) ? $item['sale_price'] : $item->sale_price);
-            $discount = (float)(is_array($item) ? $item['discount_percentage'] : $item->discount_percentage);
+            $discount = (float)(is_array($item) ? ($item['discount_percentage'] ?? 0) : $item->discount_percentage);
             $gstRate = (float)(is_array($item) ? $item['gst_rate'] : $item->gst_rate);
+            // New extra discount logic
+            $isExtraApplied = is_array($item) ? ($item['is_extra_discount_applied'] ?? false) : $item->is_extra_discount_applied ?? false;
+            $extraDiscount = is_array($item) ? ($item['applied_extra_discount_percentage'] ?? 0) : $item->applied_extra_discount_percentage ?? 0;
+            if ($isExtraApplied && $extraDiscount > 0) {
+                $discount += $extraDiscount;
+            }
 
             $lineTotal = $quantity * $salePrice;
             $afterDiscount = $lineTotal * (1 - ($discount / 100));

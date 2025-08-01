@@ -55,7 +55,18 @@ class SaleController extends Controller
     public function store(StoreSaleRequest $request): RedirectResponse
     {
         try {
-            $this->saleService->createSale($request->validated());
+            $validated = $request->safe()->all();
+
+            // Transform extra discount fields to proper types
+            foreach ($validated['new_sale_items'] as &$item) {
+                $item['is_extra_discount_applied'] = !empty($item['is_extra_discount_applied']); // cast to bool
+                $item['applied_extra_discount_percentage'] = isset($item['applied_extra_discount_percentage'])
+                    ? (float)$item['applied_extra_discount_percentage']
+                    : 0.0;
+            }
+
+            $this->saleService->createSale($validated);
+
             return redirect()->route('sales.index')->with('success', 'Sale created successfully.');
         } catch (Exception $e) {
             return back()->withInput()->withErrors(['error' => 'Sale creation failed: ' . $e->getMessage()]);

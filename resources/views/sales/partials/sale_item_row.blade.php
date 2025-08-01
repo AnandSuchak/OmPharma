@@ -86,7 +86,10 @@
             {{-- Extra Discount Checkbox --}}
             <div class="col-md-4 align-self-end mb-2">
                 <div class="form-check">
-                    <input class="form-check-input extra-discount-checkbox" type="checkbox" 
+                    <!-- Hidden field to ensure key is always present -->
+    <input type="hidden" name="{{ $prefix }}[is_extra_discount_applied]" value="0">
+
+                    <input class="form-check-input extra-discount-checkbox item-calc" type="checkbox" 
                            id="extra_disc_{{ $index }}"
                            name="{{ $prefix }}[is_extra_discount_applied]"
                            value="1"
@@ -94,10 +97,13 @@
                     <label class="form-check-label" for="extra_disc_{{ $index }}">
                         Apply Extra 3% Discount
                     </label>
+                    @php
+                        $isExtra = old("{$prefix}.is_extra_discount_applied", isset($item) && $item->is_extra_discount_applied);
+                    @endphp
                     <input type="hidden"
-                           class="applied-extra-discount-percentage"
-                           name="{{ $prefix }}[applied_extra_discount_percentage]"
-                           value="{{ old("{$prefix}.applied_extra_discount_percentage", $item->applied_extra_discount_percentage ?? 0.00) }}">
+                        class="applied-extra-discount-percentage"
+                        name="{{ $prefix }}[applied_extra_discount_percentage]"
+                        value="{{ $isExtra ? 3.00 : 0.00 }}">
                 </div>
             </div>
         </div>
