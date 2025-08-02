@@ -17,29 +17,49 @@ use App\Http\Controllers\InventoryLogController;
 |--------------------------------------------------------------------------
 */
 
-// Redirect the root URL to the dashboard
-Route::get('/', fn () => redirect()->route('dashboard.index'));
+// Root route: redirect to login or dashboard
+Route::get('/', function () {
+    return auth()->check()
+        ? redirect()->route('dashboard.index')
+        : view('auth.login');
+});
 
-// Dashboard route
-Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
+// Auth-protected routes
+Route::middleware(['auth'])->group(function () {
+    // Dashboard
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
 
-// Resource routes
-Route::resource('customers', CustomerController::class);
-Route::resource('suppliers', SupplierController::class);
-Route::resource('medicines', MedicineController::class);
-Route::resource('purchase_bills', PurchaseBillController::class);
-Route::resource('sales', SaleController::class);
-Route::resource('inventories', InventoryController::class)->only(['index', 'show']);
+    // Resource routes
+    Route::resource('customers', CustomerController::class);
+    Route::resource('suppliers', SupplierController::class);
+    Route::resource('medicines', MedicineController::class);
+    Route::resource('purchase_bills', PurchaseBillController::class); // Keep snake_case if that's what your codebase uses
+    Route::resource('sales', SaleController::class);
+    Route::resource('inventories', InventoryController::class)->only(['index', 'show']);
 
-// Sale print routes
-Route::get('/sales/{sale}/print', [SaleController::class, 'print'])->name('sales.print');
-Route::get('/sales/{sale}/print-pdf', [SaleController::class, 'printPdf'])->name('sales.print.pdf');
+    // Sale print routes
+    Route::get('/sales/{sale}/print', [SaleController::class, 'print'])->name('sales.print');
+    Route::get('/sales/{sale}/print-pdf', [SaleController::class, 'printPdf'])->name('sales.print.pdf');
 
-// Inventory log route
-Route::get('/inventory-logs', [InventoryLogController::class, 'index'])->name('inventory_logs.index');
+    // Inventory log route
+    Route::get('/inventory-logs', [InventoryLogController::class, 'index'])->name('inventory_logs.index');
 
-// API Routes
-Route::prefix('api')->name('api.')->group(function () {
+    // Reports routes
+    Route::prefix('reports')->name('reports.')->group(function () {
+        Route::get('/', [ReportController::class, 'index'])->name('index');
+        Route::post('/top-medicines', [ReportController::class, 'fetchTopMedicines'])->name('fetch.top-medicines');
+        Route::post('/medicine-comparison', [ReportController::class, 'fetchMedicineComparison'])->name('fetch.medicine-comparison');
+        Route::post('/medicine-details', [ReportController::class, 'fetchMedicineDetails'])->name('fetch.medicine-details');
+        Route::post('/customer-details', [ReportController::class, 'fetchCustomerDetails'])->name('fetch.customer-details');
+        Route::post('/supplier-details', [ReportController::class, 'fetchSupplierDetails'])->name('fetch.supplier-details');
+    });
+
+    // Medicine fallback details (outside API prefix but protected)
+    Route::get('/medicines/{id}/fallback_details', [MedicineController::class, 'fallbackDetails']);
+});
+
+// API Routes - also protected
+Route::prefix('api')->name('api.')->middleware(['auth'])->group(function () {
     // Medicine
     Route::get('/medicines/search', [MedicineController::class, 'search'])->name('medicines.search');
     Route::get('/medicines/{medicine}/batches', [MedicineController::class, 'getBatches'])->name('medicines.batches');
@@ -56,15 +76,5 @@ Route::prefix('api')->name('api.')->group(function () {
     Route::get('/suppliers/search', [SupplierController::class, 'search'])->name('suppliers.search');
 });
 
-// Medicine fallback details (non-named route)
-Route::get('/medicines/{id}/fallback_details', [MedicineController::class, 'fallbackDetails']);
-
-// Reports routes
-Route::prefix('reports')->name('reports.')->group(function () {
-    Route::get('/', [ReportController::class, 'index'])->name('index');
-    Route::post('/top-medicines', [ReportController::class, 'fetchTopMedicines'])->name('fetch.top-medicines');
-    Route::post('/medicine-comparison', [ReportController::class, 'fetchMedicineComparison'])->name('fetch.medicine-comparison');
-    Route::post('/medicine-details', [ReportController::class, 'fetchMedicineDetails'])->name('fetch.medicine-details');
-    Route::post('/customer-details', [ReportController::class, 'fetchCustomerDetails'])->name('fetch.customer-details');
-    Route::post('/supplier-details', [ReportController::class, 'fetchSupplierDetails'])->name('fetch.supplier-details');
-});
+// Laravel's built-in authentication routes
+require __DIR__.'/auth.php';

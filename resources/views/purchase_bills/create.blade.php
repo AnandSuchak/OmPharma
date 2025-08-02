@@ -128,15 +128,15 @@
 
             <div class="row mb-2">
                 <div class="col-md-4"><label class="form-label">Medicine Name:</label><select class="form-select medicine-name-select" required></select></div>
-                <div class="col-md-2 pack-selector-container" style="display: none;"><label class="form-label">Pack:</label><select class="form-select pack-select"></select></div>
-                <div class="col-md-3"><label class="form-label">Batch Number:</label><input type="text" class="form-control" name="purchase_items[__INDEX__][batch_number]"></div>
-                <div class="col-md-3"><label class="form-label">Expiry Date:</label><input type="text" class="form-control expiry-date" placeholder="MM/YY"><input type="hidden" name="purchase_items[__INDEX__][expiry_date]"></div>
+                <div class="col-md-2"><label class="form-label">Batch Number:</label><input type="text" class="form-control" name="purchase_items[__INDEX__][batch_number]"></div>
+                <div class="col-md-2"><label class="form-label">Expiry Date:</label><input type="text" class="form-control expiry-date" placeholder="MM/YY"><input type="hidden" name="purchase_items[__INDEX__][expiry_date]"></div>
+                <div class="col-md-2"><label class="form-label">Qty:</label><input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][quantity]" value="1" min="0" step="0.01" required></div>
+                <div class="col-md-2"><label class="form-label">FQ:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][free_quantity]" value="0" min="0" step="0.01"></div>
+                
             </div>
 
             <div class="row mb-2">
-                <div class="col"><label class="form-label">Qty:</label><input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][quantity]" value="1" min="0" step="0.01" required></div>
-                <div class="col"><label class="form-label">FQ:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][free_quantity]" value="0" min="0" step="0.01"></div>
-                <div class="col"><label class="form-label">Price:</label><input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][purchase_price]" step="0.01" min="0" required></div>
+               <div class="col"><label class="form-label">Price:</label><input type="number" class="form-control item-calc" name="purchase_items[__INDEX__][purchase_price]" step="0.01" min="0" required></div>
                 <div class="col"><label class="form-label">MRP:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][ptr]" step="0.01" min="0"></div>
                 <div class="col"><label class="form-label">Sell Price:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][sale_price]" step="0.01" min="0" required></div>
                 <div class="col"><label class="form-label">Cust. Disc%:</label><input type="number" class="form-control" name="purchase_items[__INDEX__][discount_percentage]" value="0" step="0.01" min="0"></div>
