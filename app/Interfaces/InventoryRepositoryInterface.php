@@ -4,6 +4,7 @@
 
 namespace App\Interfaces;
 
+use App\Models\Inventory;
 use App\Models\Medicine;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -29,4 +30,20 @@ interface InventoryRepositoryInterface
      * @return Collection
      */
     public function getDetailsForMedicine(int $medicineId): Collection;
+
+     /**
+     * Find a specific inventory item by medicine and batch number.
+     */
+    public function findByMedicineAndBatch(int $medicineId, ?string $batchNumber): ?Inventory;
+
+    /**
+     * Find the oldest available batch for a medicine that has enough stock.
+     */
+    public function findOldestAvailableBatch(int $medicineId, float $requiredQuantity): ?Inventory;
+
+    /**
+     * Adjust the stock quantity for a specific inventory item.
+     */
+    public function adjustStock(int $medicineId, ?string $batchNumber, float $quantityChange, array $itemData = []): Inventory;
+
 }

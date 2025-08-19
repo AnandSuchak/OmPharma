@@ -22,6 +22,12 @@ class InventoryControllerTest extends TestCase
         parent::setUp();
         $this->inventoryServiceMock = Mockery::mock(InventoryService::class);
         $this->app->instance(InventoryService::class, $this->inventoryServiceMock);
+
+                // Authenticate a test user
+        /** @var \App\Models\User $user */
+        $user = \App\Models\User::factory()->createOne();
+        $this->actingAs($user);
+
     }
 
     #[Test]

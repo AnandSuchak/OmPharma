@@ -33,6 +33,11 @@ class SaleControllerTest extends TestCase
         parent::setUp();
         $this->saleServiceMock = Mockery::mock(SaleService::class);
         $this->app->instance(SaleService::class, $this->saleServiceMock);
+                // Authenticate a test user
+        /** @var \App\Models\User $user */
+        $user = \App\Models\User::factory()->createOne();
+        $this->actingAs($user);
+
     }
 
     #[Test]

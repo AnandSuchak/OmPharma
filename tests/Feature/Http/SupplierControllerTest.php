@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http; // Use the correct namespace for your test file
 
 use App\Models\Supplier;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use PHPUnit\Framework\Attributes\Test;
@@ -10,6 +11,15 @@ use PHPUnit\Framework\Attributes\Test;
 class SupplierControllerTest extends TestCase
 {
     use RefreshDatabase;
+   protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Authenticate a test user
+        /** @var \App\Models\User $user */
+        $user = User::factory()->createOne();
+        $this->actingAs($user);
+    }
 
     #[Test]
     public function it_can_display_a_list_of_suppliers(): void

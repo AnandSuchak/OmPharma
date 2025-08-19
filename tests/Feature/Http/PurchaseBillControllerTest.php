@@ -33,6 +33,12 @@ class PurchaseBillControllerTest extends TestCase
         parent::setUp();
         $this->purchaseBillServiceMock = Mockery::mock(PurchaseBillService::class);
         $this->app->instance(PurchaseBillService::class, $this->purchaseBillServiceMock);
+
+                // Authenticate a test user
+        /** @var \App\Models\User $user */
+        $user = \App\Models\User::factory()->createOne();
+        $this->actingAs($user);
+
     }
 
     #[Test]

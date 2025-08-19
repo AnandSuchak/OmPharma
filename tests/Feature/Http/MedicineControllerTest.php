@@ -34,6 +34,12 @@ class MedicineControllerTest extends TestCase
         // The controller will receive this mock instead of the real service.
         $this->medicineServiceMock = Mockery::mock(MedicineService::class);
         $this->app->instance(MedicineService::class, $this->medicineServiceMock);
+
+                // Authenticate a test user
+        /** @var \App\Models\User $user */
+        $user = \App\Models\User::factory()->createOne();
+        $this->actingAs($user);
+
     }
 
    #[Test]

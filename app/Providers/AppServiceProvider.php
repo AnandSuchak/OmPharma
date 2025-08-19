@@ -2,12 +2,14 @@
 
 namespace App\Providers;
 
+use App\Interfaces\AuthRepositoryInterface;
 use App\Interfaces\CustomerRepositoryInterface;
 use App\Interfaces\InventoryRepositoryInterface;
 use App\Interfaces\MedicineRepositoryInterface;
 use App\Interfaces\PurchaseBillRepositoryInterface;
 use App\Interfaces\SaleRepositoryInterface;
 use App\Interfaces\SupplierRepositoryInterface;
+use App\Repositories\AuthRepository;
 use App\Repositories\CustomerRepository;
 use App\Repositories\InventoryRepository;
 use App\Repositories\MedicineRepository;
@@ -30,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PurchaseBillRepositoryInterface::class, PurchaseBillRepository::class);
         $this->app->bind(InventoryRepositoryInterface::class, InventoryRepository::class);
         $this->app->bind(SaleRepositoryInterface::class, SaleRepository::class);
+        $this->app->bind(AuthRepositoryInterface::class, AuthRepository::class);
     }
 
     /**

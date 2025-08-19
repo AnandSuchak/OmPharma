@@ -6,11 +6,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Models\PurchaseBillItem; 
+use App\Models\PurchaseBillItem;
+use App\Models\Traits\BelongsToShop;
 
 class Inventory extends Model
 {
-    use HasFactory,SoftDeletes;
+    use HasFactory,SoftDeletes, BelongsToShop;
 
     /**
      * The attributes that are mass assignable.

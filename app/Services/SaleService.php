@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+use App\Interfaces\InventoryRepositoryInterface;
 use App\Interfaces\SaleRepositoryInterface;
 use App\Models\Customer;
-use App\Models\Inventory;
 use App\Models\SaleItem;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -17,10 +17,12 @@ use Exception;
 class SaleService
 {
     protected SaleRepositoryInterface $saleRepository;
+    protected InventoryRepositoryInterface $inventoryRepository;
 
-    public function __construct(SaleRepositoryInterface $saleRepository)
+    public function __construct(SaleRepositoryInterface $saleRepository, InventoryRepositoryInterface $inventoryRepository)
     {
         $this->saleRepository = $saleRepository;
+        $this->inventoryRepository = $inventoryRepository;
     }
 
     /**
@@ -47,87 +49,62 @@ class SaleService
     public function createSale(array $data): \App\Models\Sale
     {
         DB::beginTransaction();
+        try {
+            // This loop validates stock and prepares item data before creating the sale
+            foreach ($data['new_sale_items'] as &$itemData) {
+                $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
+                $batchNumber = $itemData['batch_number'] ?? null;
 
-        try {foreach ($data['new_sale_items'] as &$itemData) {
-        $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
-        $batchNumber = $itemData['batch_number'] ?? null;
+                if (!$batchNumber || $batchNumber === 'N/A') {
+                    $oldestInventory = $this->inventoryRepository->findOldestAvailableBatch($itemData['medicine_id'], $totalQty);
+                    if (!$oldestInventory) {
+                        throw ValidationException::withMessages(['quantity' => "Insufficient stock for medicine ID {$itemData['medicine_id']}."]);
+                    }
+                    $batchNumber = $oldestInventory->batch_number;
+                    $itemData['batch_number'] = $batchNumber;
+                    if (empty($itemData['sale_price'])) $itemData['sale_price'] = $oldestInventory->sale_price;
+                    if (empty($itemData['ptr'])) $itemData['ptr'] = $oldestInventory->ptr;
+                    if (empty($itemData['gst_rate'])) $itemData['gst_rate'] = $oldestInventory->gst;
+                }
 
-        // Fallback to oldest batch if batch not selected or 'N/A'
-        if (!$batchNumber || $batchNumber === 'N/A') {
-            $oldestInventory = Inventory::where('medicine_id', $itemData['medicine_id'])
-                ->where('quantity', '>=', $totalQty)
-                ->orderBy('id')
-                ->first();
-
-            if (!$oldestInventory) {
-                throw ValidationException::withMessages([
-                    'quantity' => "Insufficient stock and no valid batch found for medicine ID {$itemData['medicine_id']}."
-                ]);
+                $inventory = $this->inventoryRepository->findByMedicineAndBatch($itemData['medicine_id'], $batchNumber);
+                if (!$inventory || (float)($inventory->quantity) < $totalQty) {
+                    throw ValidationException::withMessages(['quantity' => "Insufficient stock for batch '{$batchNumber}'."]);
+                }
+                 // Ensure extra discount fields are present
+                $itemData['is_extra_discount_applied'] = !empty($itemData['is_extra_discount_applied']);
+                $itemData['applied_extra_discount_percentage'] = $itemData['applied_extra_discount_percentage'] ?? 0;
             }
+            unset($itemData); // Unset reference
 
-            $batchNumber = $oldestInventory->batch_number;
-            $itemData['batch_number'] = $batchNumber;
-            if (empty($itemData['sale_price'])) {
-                $itemData['sale_price'] = $oldestInventory->sale_price;
-            }
-            if (empty($itemData['ptr'])) {
-                $itemData['ptr'] = $oldestInventory->ptr;
-            }
-            if (empty($itemData['gst_rate'])) {
-                $itemData['gst_rate'] = $oldestInventory->gst;
-            }
-        }
+            $billNumber = $this->generateBillNumber();
+            $totals = $this->calculateTotals($data['new_sale_items']);
 
-        // Ensure extra discount fields are present for each item
-        $itemData['is_extra_discount_applied'] = !empty($itemData['is_extra_discount_applied']);
-        $itemData['applied_extra_discount_percentage'] = $itemData['applied_extra_discount_percentage'] ?? 0;
-
-        // Validate inventory for the selected/fallback batch
-        $inventory = Inventory::where('medicine_id', $itemData['medicine_id'])
-            ->where('batch_number', $batchNumber)
-            ->first();
-
-        if (!$inventory || (float)($inventory->quantity) < $totalQty) {
-            throw ValidationException::withMessages([
-                'quantity' => "Insufficient stock for batch '{$batchNumber}'."
+            $sale = $this->saleRepository->createSale([
+                'customer_id' => $data['customer_id'],
+                'customer_name' => optional(Customer::find($data['customer_id']))->name,
+                'sale_date' => $data['sale_date'],
+                'bill_number' => $billNumber,
+                'notes' => $data['notes'] ?? null,
+                'total_amount' => $totals['total'],
+                'total_gst_amount' => $totals['gst'],
+                'discount_percentage' => $data['discount_percentage'] ?? 0,
             ]);
+
+            // This loop creates sale items and adjusts inventory
+            foreach ($data['new_sale_items'] as $itemData) {
+                $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
+                $this->inventoryRepository->adjustStock($itemData['medicine_id'], $itemData['batch_number'], -$totalQty);
+                $this->saleRepository->createItem($sale->id, $itemData);
+            }
+
+            DB::commit();
+            return $sale;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
         }
     }
-
-
-        // Generate bill number and totals
-        $billNumber = $this->generateBillNumber();
-        $totals = $this->calculateTotals($data['new_sale_items']);
-
-        // Create sale
-        $sale = $this->saleRepository->createSale([
-            'customer_id' => $data['customer_id'],
-            'customer_name' => optional(Customer::find($data['customer_id']))->name,
-            'sale_date' => $data['sale_date'],
-            'bill_number' => $billNumber,
-            'notes' => $data['notes'] ?? null,
-            'total_amount' => $totals['total'],
-            'total_gst_amount' => $totals['gst'],
-            'discount_percentage' => $data['discount_percentage'] ?? 0,
-            
-        ]);
-
-        // Adjust inventory and create sale items
-        foreach ($data['new_sale_items'] as $itemData) {
-            $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
-            $this->adjustInventory($itemData, -$totalQty);
-            $this->saleRepository->createItem($sale->id, $itemData);
-        }
-
-        DB::commit();
-        return $sale;
-    } catch (\Exception $e) {
-        DB::rollBack();
-        throw $e;
-    }
-}
-
-
 
     /**
      * Update an existing sale, handling items and inventory adjustments.
@@ -141,24 +118,22 @@ class SaleService
                 throw new Exception("Sale not found.");
             }
 
-            // Update main sale data
             $this->saleRepository->updateSale($saleId, Arr::only($data, ['customer_id', 'sale_date', 'notes']) + [
                 'customer_name' => Customer::find($data['customer_id'])?->name ?? 'Unknown',
             ]);
 
             $originalItems = $sale->saleItems->keyBy('id');
-
-            // Handle deleted items
             $deletedItemIds = array_filter(explode(',', $data['deleted_items'] ?? ''));
+
             foreach ($deletedItemIds as $itemId) {
                 $item = $originalItems->get($itemId);
                 if ($item) {
-                    $this->adjustInventory($item, (float)$item->quantity + (float)$item->free_quantity);
+                    $totalQty = (float)$item->quantity + (float)$item->free_quantity;
+                    $this->inventoryRepository->adjustStock($item->medicine_id, $item->batch_number, $totalQty);
                     $this->saleRepository->deleteItem($item->id);
                 }
             }
 
-            // Handle existing items
             foreach ($data['existing_sale_items'] ?? [] as $itemData) {
                 $item = $originalItems->get($itemData['id']);
                 if ($item) {
@@ -167,21 +142,19 @@ class SaleService
                     $quantityDiff = $newTotalQty - $originalTotalQty;
 
                     if ($quantityDiff !== 0.0) {
-                        $this->adjustInventory($item, -$quantityDiff);
+                        $this->inventoryRepository->adjustStock($item->medicine_id, $item->batch_number, -$quantityDiff);
                     }
                     $this->saleRepository->updateItem($item->id, $itemData);
                 }
             }
 
-            // Handle new items
             foreach ($data['new_sale_items'] ?? [] as $itemData) {
                 $totalQty = (float)($itemData['quantity'] ?? 0) + (float)($itemData['free_quantity'] ?? 0);
-                $this->adjustInventory($itemData, -$totalQty);
+                $this->inventoryRepository->adjustStock($itemData['medicine_id'], $itemData['batch_number'], -$totalQty);
                 $this->saleRepository->createItem($saleId, $itemData);
             }
 
             $this->updateSaleTotals($saleId);
-
             DB::commit();
             return true;
         } catch (Exception $e) {
@@ -203,7 +176,8 @@ class SaleService
             }
 
             foreach ($sale->saleItems as $item) {
-                $this->adjustInventory($item, (float)$item->quantity + (float)$item->free_quantity);
+                $totalQty = (float)$item->quantity + (float)$item->free_quantity;
+                $this->inventoryRepository->adjustStock($item->medicine_id, $item->batch_number, $totalQty);
             }
 
             $this->saleRepository->deleteSale($saleId);
@@ -229,32 +203,6 @@ class SaleService
     }
 
     /**
-     * Adjust inventory for a given item.
-     */
-    private function adjustInventory(array|SaleItem $item, float $adjustQty): void
-    {
-        if ($adjustQty === 0.0) return;
-
-        $medicineId = is_array($item) ? $item['medicine_id'] : $item->medicine_id;
-        $batchNumber = is_array($item) ? $item['batch_number'] : $item->batch_number;
-
-        $inventory = Inventory::firstOrNew([
-            'medicine_id' => $medicineId,
-            'batch_number' => $batchNumber,
-        ]);
-
-        $inventory->quantity = (float)($inventory->quantity ?? 0.0) + $adjustQty;
-
-        if ($inventory->quantity < 0) {
-            throw ValidationException::withMessages([
-                'quantity' => "Insufficient stock for batch '{$batchNumber}'."
-            ]);
-        }
-
-        $inventory->save();
-    }
-
-    /**
      * Recalculate and update totals for a sale.
      */
     private function updateSaleTotals(int $saleId): void
@@ -270,7 +218,7 @@ class SaleService
     /**
      * Calculate totals for a set of items.
      */
-   private function calculateTotals(iterable $items): array
+    private function calculateTotals(iterable $items): array
     {
         $subtotal = 0.0;
         $gst = 0.0;

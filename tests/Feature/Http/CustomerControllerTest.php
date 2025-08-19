@@ -12,19 +12,28 @@ use Mockery;
 use Tests\TestCase;
 use PHPUnit\Framework\Attributes\Test;
 use Exception;
+use Illuminate\Contracts\Auth\Authenticatable;
 
 class CustomerControllerTest extends TestCase
 {
     use RefreshDatabase;
 
     protected $customerServiceMock;
+protected function setUp(): void
+{
+    parent::setUp();
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->customerServiceMock = Mockery::mock(CustomerService::class);
-        $this->app->instance(CustomerService::class, $this->customerServiceMock);
-    }
+    // Mock service
+    $this->customerServiceMock = Mockery::mock(CustomerService::class);
+    $this->app->instance(CustomerService::class, $this->customerServiceMock);
+
+    // Authenticate a test user
+    /** @var \App\Models\User $user */
+    $user = \App\Models\User::factory()->createOne();
+    $this->actingAs($user);
+
+}
+
 
     #[Test]
     public function it_can_display_a_list_of_customers(): void

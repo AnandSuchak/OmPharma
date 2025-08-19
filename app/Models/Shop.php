@@ -2,14 +2,13 @@
 
 namespace App\Models;
 
-use App\Models\Traits\BelongsToShop;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Customer extends Model
+class Shop extends Model
 {
-    use HasFactory,SoftDeletes,BelongsToShop;
+    use HasFactory, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -18,17 +17,18 @@ class Customer extends Model
      */
     protected $fillable = [
         'name',
-        'contact_number',
-        'email',
+        'status',
         'address',
-        'dln',
-        'gst_number',
-        'pan_number',
+        'contact_person',
+        'contact_phone',
     ];
 
-    public function sales()
+    /**
+     * Define the relationship to the User model.
+     * A shop can have many users.
+     */
+    public function users()
     {
-        return $this->hasMany(Sale::class);
+        return $this->hasMany(User::class);
     }
-
 }
